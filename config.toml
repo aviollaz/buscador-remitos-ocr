@@ -1,0 +1,28 @@
+# Configuración del formato de los documentos.
+# Los valores por defecto corresponden a un remito argentino típico:
+#   recuadro superior derecho con "REMITO  00007 - 00043300", "Fecha: dd/mm/aaaa",
+#   "Sr/res: <cliente>   Cliente: <código>" y "Pedido N°: ... 00007 - 00046905".
+# Si tus documentos tienen otra disposición, ajustá estos valores.
+
+[documento]
+# Texto que aparece antes del número de PEDIDO, para no confundirlo con el de remito.
+# Se aceptan hasta 25 caracteres no numéricos entre la palabra y el número.
+palabras_pedido = ["Pedido"]
+
+# Expresiones regulares que rodean al nombre del cliente ("Sr/res: ACME SA  Cliente: 123").
+# Son tolerantes a errores típicos de OCR ("Sríres", "Srires", "Clente").
+etiqueta_cliente = 'S\S{0,2}r?es'
+fin_cliente = 'C\w{0,3}nte'
+
+# Zona de la página donde está impreso el número de remito, como fracciones
+# [izquierda, arriba, derecha, abajo] del ancho y alto. Esa zona se relee solo con dígitos.
+zona_numero = [0.45, 0.0, 1.0, 0.16]
+
+[ocr]
+idioma = "spa"
+# Ancho (px) al que se normaliza la página completa antes del OCR.
+ancho_pagina = 2000
+# Ancho (px) al que se agranda la zona del número para releerla.
+ancho_zona = 1400
+# Resolución con la que se renderizan los PDF escaneados.
+dpi_pdf = 300

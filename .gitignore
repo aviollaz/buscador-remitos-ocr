@@ -1,0 +1,13 @@
+# Datos y salidas locales (nunca subir remitos ni índices reales)
+remitos.db
+*.db
+remitos.csv
+Resultados_*.xlsx
+Indice_remitos_*.xlsx
+Encontrados_*/
+windows/lista.txt
+demo/
+
+__pycache__/
+.pytest_cache/
+*.pyc
