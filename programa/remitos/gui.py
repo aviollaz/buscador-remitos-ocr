@@ -8,6 +8,11 @@ import tkinter as tk
 import traceback
 from tkinter import filedialog, messagebox, ttk
 
+try:                      # para arrastrar un Excel al cuadro; sin la librería queda el botón
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+except ImportError:
+    TkinterDnD = None
+
 from . import config
 from .busqueda import buscar_lista, cargar, leer_lista, parsear_consulta, resolver
 from .exportar import exportar_excel
@@ -40,12 +45,16 @@ class App:
         # Búsqueda
         t = ttk.Frame(f)
         t.pack(fill="x", pady=(0, 4))
-        ttk.Label(t, text="Pegá uno o varios números de remito "
-                          "(podés copiar una columna entera de Excel), o").pack(side="left")
+        ttk.Label(t, text="Pegá números de remito (por ejemplo, una columna de Excel) o "
+                          "arrastrá un Excel al cuadro, o").pack(side="left")
         ttk.Button(t, text="Cargar desde Excel…", command=self.cargar_excel).pack(
             side="left", padx=6)
         self.entrada = tk.Text(f, height=5)
         self.entrada.pack(fill="x")
+        if TkinterDnD:
+            self.entrada.drop_target_register(DND_FILES)
+            self.entrada.dnd_bind("<<Drop>>", lambda e: self.cargar_archivo(
+                root.tk.splitlist(e.data)[0]))
         b = ttk.Frame(f)
         b.pack(fill="x", pady=6)
         ttk.Button(b, text="Buscar", command=self.buscar).pack(side="left")
@@ -96,12 +105,14 @@ class App:
         return ruta, leer_lista(ruta)
 
     def cargar_excel(self):
-        """Lee los números de la primera columna con datos (igual que antes) y los busca."""
         ruta = filedialog.askopenfilename(
             title="Excel con los números de remito",
             filetypes=[("Excel", "*.xlsx *.xlsm"), ("Texto", "*.txt *.csv")])
-        if not ruta:
-            return
+        if ruta:
+            self.cargar_archivo(ruta)
+
+    def cargar_archivo(self, ruta):
+        """Lee los números de la primera columna con datos (igual que antes) y los busca."""
         try:
             numeros = leer_lista(ruta)
         except SystemExit as e:              # p. ej. un .xls viejo: se explica qué hacer
@@ -230,6 +241,6 @@ class App:
 
 
 def main():
-    root = tk.Tk()
+    root = TkinterDnD.Tk() if TkinterDnD else tk.Tk()
     App(root)
     root.mainloop()
