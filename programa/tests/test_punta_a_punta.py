@@ -34,7 +34,11 @@ def test_indexar_y_buscar_remitos_y_facturas(tmp_path, capsys):
     for nombre, v in verdad.items():
         tipo, numero, texto, parcial = filas[str(carpeta / nombre)]
         assert (tipo, numero) == ("remito", v["remito"])
-        assert parcial == 0 and "traslado" in texto        # el paso 2 leyó la página entera
+        # El paso 2 leyó la página entera: aparece algo del pie. Con escaneos degradados cada
+        # versión de Tesseract lee mal una parte distinta del pie (en Windows sale "traslado"
+        # y no la fecha; en Linux al revés), así que alcanza con cualquiera.
+        pie = ("traslado", "30/09/2026", "C.A.I", "entrega")
+        assert parcial == 0 and any(p in texto for p in pie), texto
     factura = con.execute("SELECT tipo, numero, fecha, cliente, cod_cliente, citados, monto "
                           "FROM docs WHERE ruta LIKE '%factura.pdf'").fetchone()
     assert factura == ("factura", "00002-00000123", "2026-03-15", "HELADOS LA ESQUINA SRL",
