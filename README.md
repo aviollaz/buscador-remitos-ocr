@@ -1,8 +1,9 @@
-# Buscador de remitos con OCR local
+# Buscador de remitos y facturas con OCR local
 
-Indexa miles de remitos escaneados (JPG, PNG, PDF) con OCR que corre **100% en la
-computadora del usuario**, y permite encontrarlos por número de remito, de a uno o con
-una lista entera, con resultados en Excel.
+Indexa miles de remitos escaneados y facturas (JPG, PNG, PDF) con OCR que corre **100% en
+la computadora del usuario**, y permite encontrarlos por número (de a uno o con una lista
+entera), por fecha, monto o cliente, y obtener los remitos de cada factura, con resultados
+en Excel.
 
 Está en uso en el área contable de una empresa de alimentos: **3 personas** lo usan para
 cruzar remitos al cargar facturas, sobre un archivo de **~45.000 remitos por año**.
@@ -25,13 +26,14 @@ cruzar remitos al cargar facturas, sobre un archivo de **~45.000 remitos por añ
 
 | Acción | Cómo |
 |---|---|
-| **Indexar** una carpeta (y subcarpetas) | Lee cada archivo con OCR y guarda número de remito, pedido, fecha y cliente en un índice SQLite local. Es incremental: se puede cortar y retomar, y después solo procesa lo nuevo. |
-| **Buscar un número** | Acepta `43300`, `00007-00043300`, `00007 - 00043300`… Muestra por separado las coincidencias por **remito** y por **pedido**, y dice `NO ENCONTRADO` cuando no hay. |
-| **Buscar una lista** | Arrastrás un Excel con números de remito y devuelve un Excel con dos hojas (por remito / por pedido), una fila por número, con los no encontrados en rojo. Opcionalmente copia los archivos encontrados a una carpeta. |
-| **Exportar el índice** | Excel con todos los remitos ordenados por número, con filtros y los de lectura dudosa resaltados para revisar a mano. |
+| **Indexar** una carpeta (y subcarpetas) | Lee cada archivo, reconoce si es remito o factura por su título (el nombre del archivo no importa) y guarda número, fecha, cliente, código de cliente, CUIT, pedido, monto y comprobantes citados en un índice SQLite local. Es incremental: se puede cortar y retomar, y después solo procesa lo nuevo. |
+| **Buscar números** | De a uno o una lista (pegada o desde un Excel). Acepta `43300`, `00007-00043300`, `00007 - 00043300`… Distingue coincidencias por **número**, **posibles** (lectura dudosa a un dígito) y por **pedido**, y dice `NO ENCONTRADO` cuando no hay. |
+| **Filtrar** | Por tipo (remito/factura), rango de fechas, monto (`<`, `>`, `=`), clientes (nombre parcial, código o CUIT; uno o una lista) y texto. Se combinan entre sí y con los números. |
+| **Vincular** | Los remitos de cada factura (por los remitos que cita o por el número de pedido) y la factura de cada remito. Con la lista de facturas de una auditoría salen todos sus remitos. |
+| **Excel y copia** | Resultados a Excel (fechas y montos filtrables, dudosos y no encontrados resaltados) y copia de los documentos encontrados a una carpeta. También el índice completo. |
 
 Pensado para usuarios no técnicos: en Windows se instala con un doble clic (Python y
-Tesseract vía `winget`) y se usa desde una ventana con botones.
+Tesseract vía `winget`) y se usa desde una ventana con botones y filtros.
 
 ## Cómo funciona
 
@@ -41,7 +43,7 @@ flowchart LR
     B -- sí --> C[Texto embebido]
     B -- no: imagen o PDF escaneado --> D[OCR de la página completa]
     B -- no --> E[Relectura de la zona del número<br/>solo dígitos, 2 umbrales]
-    D --> F[Extracción: remito, pedido,<br/>fecha, cliente]
+    D --> F[Tipo por título + campos<br/>según config.toml]
     C --> F
     E --> G[Votación entre lecturas]
     F --> G
@@ -75,8 +77,20 @@ flowchart LR
   versión de la lógica con que se leyó. Al actualizar el programa, solo se relee lo que la
   nueva versión mejora. Se confirma cada 20 archivos, así que cortar el proceso no pierde
   trabajo.
-- **Formato configurable.** Las etiquetas (`Pedido`, `Sr/res`, `Cliente`) y la zona del
-  número están en [`config.toml`](config.toml), no en el código.
+- **Dos fuentes únicas de verdad.** Qué datos existen (y cómo se normalizan, filtran,
+  muestran y exportan) está definido una sola vez en
+  [`campos.py`](programa/buscador/campos.py); cómo se lee cada tipo de documento (título,
+  número y una expresión regular por campo) está solo en
+  [`config.toml`](programa/config.toml). Agregar un tipo de documento es agregar una sección
+  `[tipos.<nombre>]`, sin tocar código; un error en la configuración se informa con la
+  sección y la clave.
+- **El texto leído se guarda; los datos se recalculan.** El índice guarda el texto de cada
+  archivo (y el de la zona del número) y los datos se extraen de ahí con una función pura.
+  Si cambia `config.toml`, el índice se actualiza solo a partir del texto guardado, **sin
+  volver a hacer OCR** (50.000 documentos en ~5 s).
+- **El tipo lo decide el título que aparece primero.** Así una factura que menciona
+  "Remito N° …" sigue siendo factura, y los números citados o de pedido nunca se toman como
+  número del documento.
 
 ## Resultados
 
@@ -118,12 +132,14 @@ publican por confidencialidad):
 1. Descargar el repo (*Code → Download ZIP*) y descomprimirlo.
 2. Doble clic en `Instalar.bat` (solo la primera vez): instala Python, Tesseract y las
    librerías. El idioma español ya viene incluido en `programa/tessdata/`.
-3. Doble clic en `Buscador.bat`. Los Excel de resultados y las copias de remitos quedan en
-   la carpeta `Resultados/`. En la ventana:
+3. Doble clic en `Buscador.bat`. Los Excel de resultados y las copias de documentos quedan
+   en la carpeta `Resultados/`. En la ventana:
    - **Buscar:** pegar uno o varios números (por ejemplo, una columna copiada de Excel) o
-     cargarlos desde un Excel. Doble clic en un resultado abre el remito; *Resultados a
-     Excel* arma el Excel de resultados y *Copiar remitos a una carpeta* copia los
-     encontrados a `Resultados/Encontrados_<fecha>/` y abre la carpeta.
+     cargarlos desde un Excel, y/o usar los filtros (tipo, fechas, monto, clientes, texto).
+     Con *Incluir remitos/facturas vinculados* aparecen los remitos de cada factura y
+     viceversa. Doble clic en un resultado abre el documento; *Resultados a Excel* arma el
+     Excel y *Copiar documentos a una carpeta* los copia a
+     `Resultados/Encontrados_<fecha>/` y abre la carpeta.
    - **Indexar carpeta:** en dos pasos. El primero lee solo el encabezado (número, fecha,
      cliente, pedido) y deja todo buscable por número cuanto antes; el segundo completa el
      texto de la página. Se puede pausar o cerrar y sigue donde quedó.
@@ -140,27 +156,20 @@ python buscador.py verificar
 ## Uso por línea de comandos
 
 ```bash
-python buscador.py indexar "D:/Remitos"            # recorre subcarpetas; incremental
-python buscador.py buscar 43300
-python buscador.py texto "helados la esquina"
-python buscador.py lista numeros.xlsx --copiar auto # → Resultados_<fecha>.xlsx
-python buscador.py excel                            # → Indice_remitos_<fecha>.xlsx
+python buscador.py indexar "D:/Comprobantes"           # recorre subcarpetas; incremental
+python buscador.py buscar 43300 46390
+python buscador.py buscar --lista facturas.xlsx --vinculados --excel
+python buscador.py buscar --tipo factura --desde 01/03/2026 --hasta 31/03/2026 --monto ">100000"
+python buscador.py buscar --cliente makro --cliente 29257 --texto "dulce de leche"
+python buscador.py excel                               # todo el índice → Resultados/Indice_<fecha>.xlsx
 ```
 
 ```text
-$ python buscador.py buscar 46390
-=== POR NÚMERO DE REMITO ===
-Sin coincidencia exacta.
-
-POSIBLES (el número no se pudo leer con seguridad; abrirlos y confirmar):
-D:/Remitos/2026/06/scan_0412.jpg
-    remito: 00007-00046397   fecha: 10/06/2026   pedido: 00007-00050170
-    cliente: HELADOS LA ESQUINA SRL
-
-1 resultado(s).
-
-=== POR NÚMERO DE PEDIDO ===
-NO ENCONTRADO
+$ python buscador.py buscar 777 --vinculados
+777 | Encontrado: D:/Comprobantes/facturas/fact_0777.pdf
+    tipo: Factura   número: 00002-00000777   fecha: 15/03/2026   cliente: HELADOS LA ESQUINA SRL   ...
+777 | Remito de factura 00002-00000777: D:/Comprobantes/2026/03/scan_0412.jpg
+    tipo: Remito   número: 00007-00043898   fecha: 10/03/2026   ...
 ```
 
 ## Tests
@@ -173,26 +182,28 @@ python tests/muestras.py demo/ --cantidad 20   # generar remitos sintéticos
 python tests/evaluar.py --cantidad 150   # métricas de precisión
 ```
 
-Los tests y la evaluación usan únicamente **remitos sintéticos** generados por
-[`tests/muestras.py`](programa/tests/muestras.py): empresa, clientes, CUIT y números inventados, con
-degradaciones de escaneo (rotación, desenfoque, baja resolución, motas, sellos, rayas).
+Los tests y la evaluación usan únicamente **documentos sintéticos** generados por
+[`tests/muestras.py`](programa/tests/muestras.py): empresa, clientes, CUIT y números
+inventados; remitos con degradaciones de escaneo (rotación, desenfoque, baja resolución,
+motas, sellos, rayas) y facturas en PDF digital.
 
 ## Estructura
 
 ```
 Instalar.bat     instalador para usuarios finales (Windows), solo la primera vez
 Buscador.bat     abre la ventana
-Resultados/      Excel de resultados y copias de remitos (se crea al usarlo)
+Resultados/      Excel de resultados y copias de documentos (se crea al usarlo)
 programa/
-  buscador.py  punto de entrada (línea de comandos y ventana)
-  config.toml        formato de los documentos y parámetros del OCR
+  buscador.py      punto de entrada (línea de comandos y ventana)
+  config.toml      tipos de documento (título, número, campos) y parámetros del OCR
   buscador/
-    config.py      rutas y configuración (config.toml)
+    campos.py      los datos de cada documento: tipos, normalización y presentación
+    config.py      carga y valida config.toml
     ocr.py         Tesseract: página completa, zona del número, PDF digital vs escaneado
-    extraccion.py  regex de remito/pedido/fecha/cliente y votación entre lecturas
-    indice.py      SQLite incremental en dos pasos, versionado y migraciones; en paralelo
-    busqueda.py    búsqueda exacta, por pedido, casi coincidencias y búsqueda por lista
-    exportar.py    índice a Excel / CSV
+    extraccion.py  tipo de documento, campos y votación entre lecturas (funciones puras)
+    indice.py      SQLite incremental en dos pasos, migraciones y recálculo sin OCR
+    busqueda.py    filtros, números (exactos, posibles, por pedido) y vinculados
+    exportar.py    resultados e índice a Excel
     cli.py         línea de comandos
     gui.py         ventana (tkinter)
   tests/           generador de remitos sintéticos, evaluación y tests
@@ -205,6 +216,11 @@ programa/
 - Con tinta muy gastada, la fecha puede leerse mal (por ejemplo, 2025 por 2026).
 - La zona del número asume que está impreso arriba a la derecha; para otro diseño hay que
   ajustar `zona_numero` en `config.toml`.
+- El formato de **factura** de `config.toml` es provisorio (factura electrónica argentina
+  típica) hasta tener una real: si no coincide, las facturas se indexan igual pero con los
+  campos vacíos. Al ajustarlo, el índice se actualiza sin volver a leer nada.
+- Los vínculos factura ↔ remito dependen de que la factura imprima los remitos que cubre o
+  el número de pedido.
 
 ## Licencia
 
