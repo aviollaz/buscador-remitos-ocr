@@ -24,9 +24,12 @@ def test_indexar_y_buscar_remitos_y_facturas(tmp_path, capsys):
     generar_factura_pdf(str(tmp_path / "scans" / "factura.pdf"), "00002-00000123",
                         remitos[:2], "HELADOS LA ESQUINA SRL", "15/03/2026", "1.234.567,89")
 
-    indexar(str(tmp_path / "scans"), workers=2)
+    totales = {}
+    indexar(str(tmp_path / "scans"), workers=2,
+            avance=lambda paso, i, total: totales.update({paso: total}))
     salida = capsys.readouterr().out
     assert "4 archivos encontrados" in salida and ".txt: 1" in salida
+    assert totales == {1: 4, 2: 3}        # la factura (PDF digital) no se relee en el paso 2
 
     con = conectar()
     filas = {r: (tipo, numero, texto, parcial) for r, tipo, numero, texto, parcial in

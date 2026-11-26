@@ -55,7 +55,7 @@ def main():
     n_ocl = ocl_dudoso = 0
     limpios = limpios_dudosos = 0
     docs = []
-    for ruta, texto, texto_zona, err in filas:
+    for ruta, texto, texto_zona, _, err in filas:
         assert not err, err
         d = extraer(texto, texto_zona)
         remito, fecha, cliente, dudoso = d["numero"], d["fecha"], d["cliente"] or "", d["dudoso"]

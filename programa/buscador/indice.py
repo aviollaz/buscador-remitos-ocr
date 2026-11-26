@@ -140,7 +140,7 @@ def _avance_consola(paso, i, total):
 
 
 def _correr(rutas, paso, workers, avance, parar):
-    """Lee los archivos en paralelo y va devolviendo (ruta, texto, texto_zona, error)."""
+    """Lee los archivos en paralelo y va devolviendo lo que da ocr.procesar."""
     from .ocr import procesar
 
     with ProcessPoolExecutor(max_workers=workers) as ex:
@@ -196,14 +196,14 @@ def indexar(carpeta, workers=None, avance=_avance_consola, parar=None):
 
     errores = sin_numero = dudosos = 0
     columnas = [n for n, _ in ESQUEMA]
-    for i, (ruta, texto, zona, err) in enumerate(
+    for i, (ruta, texto, zona, completo, err) in enumerate(
             _correr(pendientes, 1, workers, avance, parar), 1):
         if err:
             errores += 1
             print(f"\n  ERROR {ruta}: {err}", file=sys.stderr)
             continue
         fila = {"ruta": ruta, "mtime": os.path.getmtime(ruta), "version": VERSION,
-                "parcial": 1, "texto": texto, "texto_zona": zona, **calcular(texto, zona)}
+                "parcial": int(not completo), "texto": texto, "texto_zona": zona, **calcular(texto, zona)}
         sin_numero += not fila["numero"]
         dudosos += fila["dudoso"]
         con.execute(f"INSERT OR REPLACE INTO docs ({', '.join(columnas)}) "
@@ -221,7 +221,7 @@ def indexar(carpeta, workers=None, avance=_avance_consola, parar=None):
                for r, zona, *p in con.execute(
                    "SELECT ruta, texto_zona, numero, dudoso, alternativas, fecha FROM docs "
                    "WHERE parcial = 1") if os.path.exists(r)}
-    for i, (ruta, texto, _, err) in enumerate(
+    for i, (ruta, texto, _, _, err) in enumerate(
             _correr(list(previos), 2, workers, avance, parar), 1):
         if not err:
             zona, previo = previos[ruta]
