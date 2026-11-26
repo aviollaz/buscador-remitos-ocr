@@ -42,6 +42,6 @@ echo [3/3] Instalando librerias...
 "%PY%" -m pip install --upgrade --quiet -r requirements.txt
 
 echo.
-"%PY%" buscar_remitos.py verificar
+"%PY%" buscador.py verificar
 echo.
 pause

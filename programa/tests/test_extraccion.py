@@ -1,4 +1,4 @@
-from remitos.extraccion import decidir, extraer, fecha_de_encabezado
+from buscador.extraccion import decidir, extraer, fecha_de_encabezado
 
 PAGINA = """REMITO
 00007 - 00043300

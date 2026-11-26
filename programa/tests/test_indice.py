@@ -1,7 +1,7 @@
 import os
 import sqlite3
 
-from remitos import indice
+from buscador import indice
 
 
 def test_migra_indice_de_version_anterior_sin_perder_datos(tmp_path):
@@ -34,7 +34,7 @@ def test_hay_que_leer(tmp_path):
 
 
 def test_indexar_quita_archivos_que_ya_no_existen(tmp_path, monkeypatch):
-    from remitos import config
+    from buscador import config
     monkeypatch.setattr(config, "DB", str(tmp_path / "t.db"))
     con = indice.conectar()
     movido = str(tmp_path / "vieja" / "r.jpg")          # su disco existe: se quita

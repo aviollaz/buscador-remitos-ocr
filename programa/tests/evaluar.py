@@ -21,9 +21,9 @@ from concurrent.futures import ProcessPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from remitos import busqueda, indice  # noqa: E402
-from remitos.extraccion import RE_NUM, norm  # noqa: E402
-from remitos.ocr import procesar  # noqa: E402
+from buscador import busqueda, indice  # noqa: E402
+from buscador.extraccion import RE_NUM, norm  # noqa: E402
+from buscador.ocr import procesar  # noqa: E402
 from tests.muestras import generar  # noqa: E402
 
 

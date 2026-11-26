@@ -134,21 +134,21 @@ publican por confidencialidad):
 # Tesseract: apt install tesseract-ocr | brew install tesseract | winget install UB-Mannheim.TesseractOCR
 cd programa
 pip install -r requirements.txt
-python buscar_remitos.py verificar
+python buscador.py verificar
 ```
 
 ## Uso por línea de comandos
 
 ```bash
-python buscar_remitos.py indexar "D:/Remitos"            # recorre subcarpetas; incremental
-python buscar_remitos.py buscar 43300
-python buscar_remitos.py texto "helados la esquina"
-python buscar_remitos.py lista numeros.xlsx --copiar auto # → Resultados_<fecha>.xlsx
-python buscar_remitos.py excel                            # → Indice_remitos_<fecha>.xlsx
+python buscador.py indexar "D:/Remitos"            # recorre subcarpetas; incremental
+python buscador.py buscar 43300
+python buscador.py texto "helados la esquina"
+python buscador.py lista numeros.xlsx --copiar auto # → Resultados_<fecha>.xlsx
+python buscador.py excel                            # → Indice_remitos_<fecha>.xlsx
 ```
 
 ```text
-$ python buscar_remitos.py buscar 46390
+$ python buscador.py buscar 46390
 === POR NÚMERO DE REMITO ===
 Sin coincidencia exacta.
 
@@ -184,9 +184,9 @@ Instalar.bat     instalador para usuarios finales (Windows), solo la primera vez
 Buscador.bat     abre la ventana
 Resultados/      Excel de resultados y copias de remitos (se crea al usarlo)
 programa/
-  buscar_remitos.py  punto de entrada (línea de comandos y ventana)
+  buscador.py  punto de entrada (línea de comandos y ventana)
   config.toml        formato de los documentos y parámetros del OCR
-  remitos/
+  buscador/
     config.py      rutas y configuración (config.toml)
     ocr.py         Tesseract: página completa, zona del número, PDF digital vs escaneado
     extraccion.py  regex de remito/pedido/fecha/cliente y votación entre lecturas

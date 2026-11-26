@@ -1,7 +1,7 @@
 import pytest
 
-from remitos import indice
-from remitos.busqueda import (cargar, casi, coincide, distancia, leer_lista,
+from buscador import indice
+from buscador.busqueda import (cargar, casi, coincide, distancia, leer_lista,
                               parsear_consulta, resolver)
 
 

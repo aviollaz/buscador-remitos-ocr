@@ -11,7 +11,7 @@ if not shutil.which("tesseract"):
 
 
 def test_indexar_y_buscar(tmp_path, monkeypatch, capsys):
-    from remitos import config
+    from buscador import config
     from tests.muestras import generar
 
     carpeta = tmp_path / "scans" / "sub"                 # también recorre subcarpetas
@@ -20,8 +20,8 @@ def test_indexar_y_buscar(tmp_path, monkeypatch, capsys):
     (carpeta / "notas.txt").write_text("no es una imagen")
     monkeypatch.setattr(config, "DB", str(tmp_path / "t.db"))
 
-    from remitos.busqueda import buscar_numero
-    from remitos.indice import conectar, indexar
+    from buscador.busqueda import buscar_numero
+    from buscador.indice import conectar, indexar
 
     indexar(str(tmp_path / "scans"), workers=2)
     salida = capsys.readouterr().out
