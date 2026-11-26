@@ -21,8 +21,9 @@ from concurrent.futures import ProcessPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from buscador import busqueda, indice  # noqa: E402
-from buscador.extraccion import RE_NUM, norm  # noqa: E402
+from buscador import busqueda  # noqa: E402
+from buscador.campos import normalizar  # noqa: E402
+from buscador.extraccion import extraer  # noqa: E402
 from buscador.ocr import procesar  # noqa: E402
 from tests.muestras import generar  # noqa: E402
 
@@ -48,24 +49,24 @@ def main():
         filas = list(ex.map(procesar, rutas))
     segs = time.time() - t0
 
-    con = indice.conectar(":memory:")
-
     from collections import defaultdict
     por_calidad = defaultdict(lambda: {"n": 0, "solo_pagina": 0, "pagina_y_zona": 0})
     ok_fecha = ok_cliente = 0
     n_ocl = ocl_dudoso = 0
     limpios = limpios_dudosos = 0
-    for f in filas:
-        ruta, texto, remito, pedido, fecha, cliente, dudoso, alt, err = f
+    docs = []
+    for ruta, texto, texto_zona, err in filas:
         assert not err, err
+        d = extraer(texto, texto_zona)
+        remito, fecha, cliente, dudoso = d["numero"], d["fecha"], d["cliente"] or "", d["dudoso"]
         v = verdad[os.path.basename(ruta)]
-        nums = [norm(*m.groups()) for m in RE_NUM.finditer(texto)]
-        sin_pedido = [x for x in nums if x != v["pedido"]]
+        solo_pagina = extraer(texto)           # sin la relectura de la zona del número
+        sin_pedido = [x for x in (solo_pagina["numero"] or "").split(";") if x]
         c = por_calidad["con dígito tapado" if v["ocluido"] else v["calidad"]]
         c["n"] += 1
         c["solo_pagina"] += bool(sin_pedido) and sin_pedido[0] == v["remito"]
         c["pagina_y_zona"] += remito == v["remito"]
-        ok_fecha += fecha == v["fecha"]
+        ok_fecha += fecha == normalizar("fecha", v["fecha"])
         ok_cliente += cliente.strip().upper() == v["cliente"]
         if v["ocluido"]:
             n_ocl += 1
@@ -73,22 +74,22 @@ def main():
         else:
             limpios += 1
             limpios_dudosos += bool(dudoso) and remito == v["remito"]
-        con.execute("INSERT INTO docs VALUES (?,?,?,?,?,?,?,?,?,?)",
-                    (ruta, 0, texto, remito, pedido, fecha, cliente, indice.VERSION, dudoso,
-                     alt))
+        docs.append({"ruta": ruta, "dudoso": dudoso, "alternativas": d["alternativas"],
+                     "numero": remito, "pedido": d["pedido"]})
 
     # Búsqueda real: ¿aparece el archivo correcto al buscar su número?
-    todas, dudosos = busqueda.cargar(con)
+    todas, dudosos = docs, [d for d in docs if d["dudoso"]]
     exacto = posible = perdido = ajenos = 0
     perdidos_ocl = 0
     for ruta in rutas:
         v = verdad[os.path.basename(ruta)]
         consulta = busqueda.parsear_consulta(v["remito"])
-        por_remito, posibles, _ = busqueda.resolver(con, todas, dudosos, consulta, v["remito"])
-        ajenos += sum(r[0] != ruta for r in por_remito)
-        if any(r[0] == ruta for r in por_remito):
+        por_remito = [f for f in todas if busqueda.coincide(f["numero"], consulta)]
+        posibles = busqueda.casi(dudosos, consulta, {f["ruta"] for f in por_remito})
+        ajenos += sum(f["ruta"] != ruta for f in por_remito)
+        if any(f["ruta"] == ruta for f in por_remito):
             exacto += 1
-        elif any(r[0] == ruta for r in posibles):
+        elif any(f["ruta"] == ruta for f in posibles):
             posible += 1
         else:
             perdido += 1

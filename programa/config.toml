@@ -1,22 +1,22 @@
-# Configuración del formato de los documentos.
-# Los valores por defecto corresponden a un remito argentino típico:
-#   recuadro superior derecho con "REMITO  00007 - 00043300", "Fecha: dd/mm/aaaa",
-#   "Sr/res: <cliente>   Cliente: <código>" y "Pedido N°: ... 00007 - 00046905".
-# Si tus documentos tienen otra disposición, ajustá estos valores.
+# Configuración del buscador: cómo se lee cada tipo de documento.
+#
+# Es la única fuente de esta información: el programa no tiene valores propios.
+# Si se cambia algo de [general] o [tipos], la próxima vez que se indexa se actualizan los
+# datos de TODO el índice a partir del texto ya leído, sin volver a hacer OCR.
+#
+# Las expresiones regulares van entre comillas simples ('...'), no distinguen mayúsculas
+# y tienen que tener UN grupo entre paréntesis con el dato (dos en "numero": punto de venta
+# y número). Si hay un error, el programa avisa en qué sección y clave está.
 
-[documento]
-# Texto que aparece antes del número de PEDIDO, para no confundirlo con el de remito.
-# Se aceptan hasta 25 caracteres no numéricos entre la palabra y el número.
-palabras_pedido = ["Pedido"]
-
-# Expresiones regulares que rodean al nombre del cliente ("Sr/res: ACME SA  Cliente: 123").
-# Son tolerantes a errores típicos de OCR ("Sríres", "Srires", "Clente").
-etiqueta_cliente = 'S\S{0,2}r?es'
-fin_cliente = 'C\w{0,3}nte'
-
-# Zona de la página donde está impreso el número de remito, como fracciones
-# [izquierda, arriba, derecha, abajo] del ancho y alto. Esa zona se relee solo con dígitos.
-zona_numero = [0.45, 0.0, 1.0, 0.16]
+[general]
+# Tipo que se asume cuando no se reconoce ningún título.
+tipo_por_defecto = "remito"
+# CUIT de la empresa: aparece en todos los documentos; se ignora para quedarse con el del
+# cliente.
+cuits_propios = ["30-58661152-2"]
+# Una fecha precedida por estas palabras no es la fecha del documento (vencimiento del CAI,
+# inicio de actividades).
+fechas_a_ignorar_tras = ["vto", "activ"]
 
 [ocr]
 idioma = "spa"
@@ -26,6 +26,50 @@ ancho_pagina = 2000
 ancho_zona = 1400
 # Resolución con la que se renderizan los PDF escaneados.
 dpi_pdf = 300
-# Parte de arriba de la página (fracción del alto) que se lee en la lectura rápida
-# (paso 1 del indexado). Tiene que incluir número, fecha, cliente y pedido.
+# Parte de arriba de la página (fracción del alto) que se lee en la lectura rápida (paso 1
+# del indexado). Tiene que incluir número, fecha, cliente y pedido.
 alto_encabezado = 0.45
+# Zona donde está impreso el número en los escaneos, como fracciones
+# [izquierda, arriba, derecha, abajo] del ancho y alto. Se relee solo con dígitos.
+zona_numero = [0.45, 0.0, 1.0, 0.16]
+
+# ------------------------------------------------------------------------------------------
+# Tipos de documento. El tipo se reconoce por "titulo": si aparecen varios títulos, gana el
+# que está más arriba en la página (una factura que menciona "Remito N°..." sigue siendo
+# factura). El nombre del archivo no importa.
+#
+# Campos posibles: fecha, cliente, cod_cliente, cuit, pedido, citados, monto.
+# Un campo que no se define para un tipo queda vacío.
+
+[tipos.remito]
+nombre = "Remito"
+titulo = '\bREMITO\b'
+# El número del documento. Se aceptan dígitos de más o de menos para detectar lecturas
+# dudosas; los números de los campos "pedido" y "citados" nunca se toman como número.
+numero = ['(?<!\d)(\d{4,5})\s*[-–—]\s*(\d{5,9})(?!\d)']
+
+[tipos.remito.campos]
+pedido = 'Pedido[^\n\d]{0,25}(\d{4,5}\s*[-–—]\s*\d{6,8})'
+fecha = 'Fecha\s*[:;]\s*(\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{2,4})'
+# "Sr/res: ACME SA   Cliente: 123", tolerante a errores típicos de OCR ("Sríres", "Clente").
+cliente = '\bS\S{0,2}r?es\b\s*[:;.]?\s*(.+?)(?=\s+C\w{0,4}nte\b|\n|$)'
+cod_cliente = '\bC\w{0,4}nte\s*[:;.]?\s*(\d+)'
+cuit = '(\d{2}\s*-\s*\d{8}\s*-\s*\d)'
+
+# PROVISORIO: formato típico de una factura electrónica argentina. Ajustar con una factura
+# real; al indexar se actualiza todo sin volver a leer los archivos.
+[tipos.factura]
+nombre = "Factura"
+titulo = '\bFACTURA\b'
+numero = ['Punto\s+de\s+Venta\s*:?\s*(\d{1,5})\s*Comp\.?\s*Nro\.?\s*:?\s*(\d{1,8})',
+          '(?<!\d)(\d{4,5})\s*[-–—]\s*(\d{8})(?!\d)']
+
+[tipos.factura.campos]
+fecha = 'Fecha\s+de\s+Emisi[oó]n\s*:?\s*(\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{4})'
+cliente = 'Raz[oó]n\s+Social\s*:?\s*(.+?)(?=\s{2,}|\n|$)'
+cod_cliente = 'C[oó]d(?:igo)?\.?\s*(?:de\s+)?Cliente\s*:?\s*(\d+)'
+cuit = '(\d{2}\s*-\s*\d{8}\s*-\s*\d)'
+pedido = 'Pedido[^\n\d]{0,25}(\d{4,5}\s*[-–—]\s*\d{6,8})'
+# Remitos que cubre la factura (para vincularlos); puede haber varios.
+citados = 'Remitos?\s*(?:N[°º.o]*)?\s*:?\s*((?:\d{1,5}\s*[-–—]\s*\d{1,8}[\s,;y/]*)+)'
+monto = 'Importe\s+Total\s*:?\s*\$?\s*([\d.,]+)'

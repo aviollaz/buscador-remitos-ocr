@@ -191,6 +191,28 @@ def generar(destino, cantidad, semilla=1, ocluidos=0.1, calidades=(0.5, 0.3, 0.2
     return verdad
 
 
+def generar_factura_pdf(ruta, numero, citados, cliente, fecha, monto, cod_cliente="029257"):
+    """Factura electrónica SINTÉTICA en PDF digital (con texto, sin escanear), con el formato
+    provisorio de config.toml. `citados`: números de remito que cubre."""
+    import pymupdf
+
+    pv, n = numero.split("-")
+    lineas = ["FACTURA", "A   Cod. 01", "LÁCTEOS EJEMPLO S.A.",
+              f"Punto de Venta: {pv}   Comp. Nro: {n}", f"Fecha de Emisión: {fecha}",
+              "CUIT: 30-12345678-9   Ingresos Brutos: 901-000000",
+              f"Apellido y Nombre / Razón Social: {cliente}",
+              "Condición frente al IVA: IVA Responsable Inscripto",
+              f"Código de Cliente: {cod_cliente}", f"Remitos: {', '.join(citados)}",
+              "Producto / Servicio   Cantidad   Precio Unit.   Subtotal",
+              "DULCE DE LECHE CLASICO X 400 GR   100   1.000,00   100.000,00",
+              f"Importe Total: $ {monto}", "CAE N°: 75123456789012   Fecha de Vto. de CAE: 25/03/2026"]
+    doc = pymupdf.open()
+    pagina = doc.new_page()
+    for i, linea in enumerate(lineas):
+        pagina.insert_text((60, 70 + 20 * i), linea, fontsize=11)
+    doc.save(ruta)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("destino")

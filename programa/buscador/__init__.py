@@ -1,3 +1,4 @@
-"""Buscador de remitos: OCR local + índice SQLite + búsqueda masiva con salida a Excel."""
+"""Buscador de remitos y facturas: OCR local + índice SQLite + búsqueda con filtros y salida
+a Excel."""
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"

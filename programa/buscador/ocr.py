@@ -1,12 +1,15 @@
-"""Lectura de imágenes y PDF con Tesseract, 100% local."""
+"""Lectura de imágenes y PDF con Tesseract, 100% local. Solo lee: los datos se extraen
+después del texto (ver extraccion.py)."""
 
 import os
 
 import pytesseract
 from PIL import Image, ImageOps
 
-from .config import BASE_DIR, DOC, OCR
-from .extraccion import RE_NUM_CRUDO, decidir, extraer, fecha_de_encabezado
+from .config import BASE_DIR, CFG
+from .extraccion import SEPARADOR_LECTURAS
+
+OCR = CFG.ocr
 
 # En Windows, buscar Tesseract en las rutas de instalación habituales
 if os.name == "nt":
@@ -34,38 +37,34 @@ def preparar(gris):
 
 
 def leer_zona_numero(gris):
-    """Relee la zona donde está impreso el número de remito: recortada, agrandada,
-    con y sin binarizar, y aceptando únicamente dígitos, '-' y '/'.
-    Devuelve (lecturas [(pv, numero)], texto)."""
+    """Relee la zona donde está impreso el número: recortada, agrandada, con y sin
+    binarizar, y aceptando únicamente dígitos, '-' y '/'. Devuelve el texto leído."""
     w, h = gris.size
-    x0, y0, x1, y1 = DOC["zona_numero"]
+    x0, y0, x1, y1 = OCR["zona_numero"]
     zona = gris.crop((int(w * x0), int(h * y0), int(w * x1), int(h * y1)))
     ancho = OCR["ancho_zona"]
     alto = max(1, int(zona.height * ancho / zona.width))
     zona = ImageOps.autocontrast(zona.resize((ancho, alto), Image.LANCZOS))
 
-    lecturas, textos = [], []
+    textos = []
     for umbral in (None, 160):
         z = zona if umbral is None else zona.point(lambda px: 255 if px > umbral else 0)
-        t = pytesseract.image_to_string(
-            z, lang=IDIOMA, config="--psm 6 -c tessedit_char_whitelist=0123456789-/")
-        textos.append(t)
-        lecturas += RE_NUM_CRUDO.findall(t)
-    return lecturas, "\n".join(textos)
+        textos.append(pytesseract.image_to_string(
+            z, lang=IDIOMA, config="--psm 6 -c tessedit_char_whitelist=0123456789-/"))
+    return SEPARADOR_LECTURAS.join(textos)
 
 
 def leer_imagen(img, paso=None):
-    """OCR de la página + relectura de la zona del número. Devuelve (texto, lecturas_zona,
-    texto_zona). paso=1: solo el encabezado (rápido); paso=2: solo la página completa."""
+    """OCR de la página + relectura de la zona del número. Devuelve (texto, texto_zona).
+    paso=1: solo el encabezado (rápido); paso=2: solo la página completa."""
     gris = ImageOps.exif_transpose(img).convert("L")
     pagina = gris
     if paso == 1:
         pagina = gris.crop((0, 0, gris.width, int(gris.height * OCR["alto_encabezado"])))
     texto = pytesseract.image_to_string(preparar(pagina), lang=IDIOMA, config="--psm 3")
     if paso == 2:
-        return texto, [], ""
-    lecturas, texto_zona = leer_zona_numero(gris)
-    return texto, lecturas, texto_zona
+        return texto, ""
+    return texto, leer_zona_numero(gris)
 
 
 def es_escaneo(pagina):
@@ -86,7 +85,7 @@ def paginas_pdf(ruta, paso=None):
         for pagina in doc:
             t = pagina.get_text().strip()
             if not es_escaneo(pagina) and len(t) >= 30:
-                yield t, [], ""
+                yield t, ""
             else:
                 pix = pagina.get_pixmap(dpi=OCR["dpi_pdf"], colorspace=pymupdf.csGRAY)
                 yield leer_imagen(Image.frombytes("L", (pix.width, pix.height), pix.samples),
@@ -94,7 +93,7 @@ def paginas_pdf(ruta, paso=None):
 
 
 def procesar(ruta, paso=None):
-    """Lee un archivo y devuelve una fila lista para el índice (paso: ver leer_imagen).
+    """Lee un archivo. Devuelve (ruta, texto, texto_zona, error) (paso: ver leer_imagen).
     Corre en procesos separados (multiprocessing), por eso nunca lanza excepciones."""
     try:
         if ruta.lower().endswith(".pdf"):
@@ -103,12 +102,7 @@ def procesar(ruta, paso=None):
             with Image.open(ruta) as im:
                 partes = [leer_imagen(im, paso)]
         texto = "\n".join(p[0] for p in partes)
-        lecturas = [x for p in partes for x in p[1]]
-        texto_zona = "\n".join(p[2] for p in partes)
-
-        _, pedido, fecha, cliente = extraer(texto)
-        remito, dudoso, alternativas = decidir(texto, lecturas, texto_zona)
-        fecha = fecha_de_encabezado(texto_zona) or fecha
-        return (ruta, texto, remito, pedido, fecha, cliente, int(dudoso), alternativas, None)
+        texto_zona = SEPARADOR_LECTURAS.join(p[1] for p in partes if p[1])
+        return ruta, texto, texto_zona, None
     except Exception as e:  # noqa: BLE001 - se informa por archivo y se sigue con el resto
-        return (ruta, "", "", "", "", "", 0, "", str(e))
+        return ruta, "", "", str(e)

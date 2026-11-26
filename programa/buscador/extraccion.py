@@ -1,110 +1,114 @@
-"""Extracción de datos del texto leído por OCR: número de remito, pedido, fecha y cliente.
+"""Extracción de datos del texto leído: tipo de documento, número y los campos de CAMPOS.
 
-Funciones puras (sin OCR ni base de datos), fáciles de testear.
-"""
+Funciones puras (sin OCR ni base de datos): el resultado depende solo del texto, del texto
+de la zona del número y de la configuración. Por eso el índice puede recalcular todo cuando
+cambia config.toml, sin volver a leer los archivos."""
 
 import re
 from collections import Counter
-from datetime import date
 
-from .config import DOC
+from . import config
+from .campos import CAMPOS, POR_NOMBRE, RE_FECHA, comprobante, fecha_iso, normalizar
 
-# Formato de número de comprobante: punto de venta (4-5 dígitos) + número (8 dígitos).
-# Ej.: 0001-00012345, 00007 - 00043300.
-RE_NUM = re.compile(r"(?<!\d)(\d{4,5})\s*[-–—]\s*(\d{6,8})(?!\d)")
-# Versión "cruda": acepta números con dígitos de más o de menos, para detectar lecturas dudosas.
+# Lectura de la zona del número (solo dígitos, '-' y '/'): acepta dígitos de más o de menos
+# para detectar lecturas dudosas.
 RE_NUM_CRUDO = re.compile(r"(?<!\d)(\d{4,5})\s*[-–—]\s*(\d{5,9})(?!\d)")
-
-_palabras = "|".join(re.escape(p) for p in DOC["palabras_pedido"])
-RE_PEDIDO = re.compile(rf"(?:{_palabras})[^\n\d]{{0,25}}(\d{{4,5}})\s*[-–—]\s*(\d{{6,8}})", re.I)
-
-# "Fecha: 25/11/2025" (prioridad) o cualquier fecha suelta como respaldo.
-RE_FECHA = re.compile(r"Fecha\s*[:;]\s*(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(\d{2,4})", re.I)
-RE_FECHA_SUELTA = re.compile(r"(?<!\d)(\d{1,2})/(\d{1,2})/(\d{4})(?!\d)")
-
-RE_CLIENTE = re.compile(
-    rf"\b{DOC['etiqueta_cliente']}\b\s*[:;.]?\s*(.+?)(?=\s+{DOC['fin_cliente']}\b|\n|$)", re.I)
-
-ANIO_MAX = date.today().year + 1
+# Separa las lecturas independientes de la zona (y las páginas) dentro de texto_zona; ninguna
+# expresión puede cruzarlo, así el final de una lectura no se pega al principio de otra.
+SEPARADOR_LECTURAS = "\n#\n"
 
 
-def norm(pv, n):
-    """Normaliza un número de comprobante a PPPPP-NNNNNNNN."""
-    return f"{int(pv):05d}-{int(n):08d}"
+def detectar_tipo(texto, cfg):
+    """El tipo cuyo título aparece primero en el texto (o el tipo por defecto)."""
+    encontrados = [(m.start(), t) for t in cfg.tipos.values() if (m := t.titulo.search(texto))]
+    if encontrados:
+        return min(encontrados, key=lambda x: x[0])[1]
+    return cfg.tipos[cfg.tipo_por_defecto]
 
 
-def fecha_valida(d, m, y, permitir_2_digitos=True):
-    if not (1 <= d <= 31 and 1 <= m <= 12):
-        return False
-    return (permitir_2_digitos and y < 100) or 2000 <= y <= ANIO_MAX
-
-
-def extraer(texto):
-    """Devuelve (remitos, pedidos, fecha, cliente) a partir del texto de la página."""
-    pedidos = {norm(*m.groups()) for m in RE_PEDIDO.finditer(texto)}
-    remitos = []
-    for m in RE_NUM.finditer(texto):
-        n = norm(*m.groups())
-        if n not in pedidos and n not in remitos:
-            remitos.append(n)
-
-    fecha = ""
-    for m in list(RE_FECHA.finditer(texto)) + list(RE_FECHA_SUELTA.finditer(texto)):
-        antes = texto[max(0, m.start() - 15):m.start()].lower()
-        if "vto" in antes or "activ" in antes:   # vencimiento del CAI / inicio de actividades
+def valor_campo(tipo_campo, patron, texto, cfg):
+    """Valor de un campo según su patrón. Los comprobantes juntan todos los que aparecen
+    ('a;b'); el resto se queda con el primero válido (el CUIT, el primero que no es propio)."""
+    vistos = []
+    for m in patron.finditer(texto):
+        v = normalizar(tipo_campo, m.group(1))
+        if v is None or (tipo_campo == "cuit" and v in cfg.cuits_propios):
             continue
-        d, mth, y = (int(x) for x in m.groups())
-        if fecha_valida(d, mth, y):
-            fecha = f"{d:02d}/{mth:02d}/{y}"
-            break
-
-    c = RE_CLIENTE.search(texto)
-    cliente = c.group(1).strip(" :;.-") if c else ""
-    return ";".join(remitos), ";".join(sorted(pedidos)), fecha, cliente
+        if tipo_campo != "comprobante":
+            return v
+        vistos += [x for x in v.split(";") if x not in vistos]
+    return ";".join(vistos) or None
 
 
-def fecha_de_encabezado(texto_enc):
-    """Primera fecha válida en la relectura de la zona del número (solo dígitos)."""
-    for m in RE_FECHA_SUELTA.finditer(texto_enc):
-        d, mth, y = (int(x) for x in m.groups())
-        if fecha_valida(d, mth, y, permitir_2_digitos=False):
-            return f"{d:02d}/{mth:02d}/{y}"
-    return ""
+def fecha_de_encabezado(texto_zona):
+    """Primera fecha válida (año de 4 dígitos) en la relectura de la zona del número."""
+    for m in RE_FECHA.finditer(texto_zona or ""):
+        if len(m.group(3)) == 4 and (f := fecha_iso(*m.groups(), permitir_2_digitos=False)):
+            return f
+    return None
 
 
-def decidir(texto, lecturas_enc, texto_enc):
-    """Elige el número de remito combinando dos lecturas independientes:
-    - la de la página completa (OCR general), y
+def fecha_suelta(texto, ignorar_tras):
+    """Primera fecha válida del texto que no sea, por ejemplo, el vencimiento del CAI."""
+    for m in RE_FECHA.finditer(texto):
+        antes = texto[max(0, m.start() - 15):m.start()].lower()
+        if any(p in antes for p in ignorar_tras):
+            continue
+        if f := fecha_iso(*m.groups()):
+            return f
+    return None
+
+
+def decidir(pagina, lecturas_zona, texto_zona):
+    """Elige el número del documento combinando dos lecturas independientes:
+    - la de la página (candidatos `pagina`, ya sin los números de pedido y citados), y
     - la de la zona del número releída solo con dígitos (más confiable, pesa doble).
 
-    Devuelve (remito, dudoso, alternativas). Una lectura es "dudosa" si las lecturas no
+    Devuelve (numero, dudoso, alternativas). Una lectura es "dudosa" si las lecturas no
     coinciden, si alguna tiene dígitos de más/menos, o si la zona no dio ningún número.
     """
-    pedidos = {norm(*m.groups()) for m in RE_PEDIDO.finditer(texto)}
-    pagina = [(a, b) for a, b in RE_NUM_CRUDO.findall(texto) if norm(a, b) not in pedidos]
-
     votos = Counter()
-    for a, b in lecturas_enc:
+    for a, b in lecturas_zona:
         if len(b) == 8:
-            votos[norm(a, b)] += 2
+            votos[comprobante(a, b)] += 2
     for a, b in pagina:
         if len(b) == 8:
-            votos[norm(a, b)] += 1
+            votos[comprobante(a, b)] += 1
 
-    crudas = {f"{int(a):05d}-{b}" for a, b in lecturas_enc}
-    crudas |= {f"{int(a):05d}-{b}" for a, b in pagina}
+    crudas = {f"{int(a):05d}-{b}" for a, b in lecturas_zona + pagina}
     if not votos:
         # Ninguna lectura de 8 dígitos. Si hay de 9, lo más común es que una firma o raya
         # pegada al número se haya leído como un dígito extra al final: se trunca.
-        for a, b in lecturas_enc + pagina:
+        for a, b in lecturas_zona + pagina:
             if len(b) == 9:
-                votos[norm(a, b[:8])] += 1
+                votos[comprobante(a, b[:8])] += 1
         if not votos:
-            return "", bool(crudas), ";".join(sorted(crudas))
-        remito = votos.most_common(1)[0][0]
-        return remito, True, ";".join(sorted(crudas - {remito}))
+            return None, bool(crudas), ";".join(sorted(crudas))
+        numero = votos.most_common(1)[0][0]
+        return numero, True, ";".join(sorted(crudas - {numero}))
 
-    remito = votos.most_common(1)[0][0]
-    alternativas = sorted(crudas - {remito})
-    dudoso = bool(alternativas) or (not lecturas_enc and bool(texto_enc))
-    return remito, dudoso, ";".join(alternativas)
+    numero = votos.most_common(1)[0][0]
+    alternativas = sorted(crudas - {numero})
+    dudoso = bool(alternativas) or (not lecturas_zona and bool(texto_zona))
+    return numero, dudoso, ";".join(alternativas)
+
+
+def extraer(texto, texto_zona="", cfg=None):
+    """Datos de un documento: un dict con todos los CAMPOS + 'dudoso' y 'alternativas'."""
+    cfg = cfg or config.CFG
+    tipo = detectar_tipo(texto, cfg)
+    datos = {c.nombre: None for c in CAMPOS}
+    datos["tipo"] = tipo.clave
+    for nombre, patron in tipo.campos.items():
+        datos[nombre] = valor_campo(POR_NOMBRE[nombre].tipo, patron, texto, cfg)
+
+    otros = {x for n in tipo.campos if POR_NOMBRE[n].tipo == "comprobante"
+             for x in (datos[n] or "").split(";") if x}
+    pagina = [(a, b) for p in tipo.numero for a, b in p.findall(texto)
+              if comprobante(a, b) not in otros]
+    lecturas = RE_NUM_CRUDO.findall(texto_zona or "")
+    datos["numero"], dudoso, datos["alternativas"] = decidir(pagina, lecturas, texto_zona or "")
+    datos["dudoso"] = int(dudoso)
+    datos["fecha"] = (fecha_de_encabezado(texto_zona) or datos["fecha"]
+                      or fecha_suelta(texto, cfg.fechas_a_ignorar_tras))
+    return datos

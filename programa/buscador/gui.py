@@ -1,4 +1,4 @@
-"""Ventana para usar el buscador sin consola: buscar, indexar y exportar a Excel."""
+"""Ventana para usar el buscador sin consola: buscar con filtros, indexar y exportar a Excel."""
 
 import os
 import tempfile
@@ -10,14 +10,20 @@ from datetime import datetime
 from tkinter import filedialog, messagebox, ttk
 
 from . import config
-from .busqueda import _copiar, buscar_lista, cargar, leer_lista, parsear_consulta, resolver
-from .exportar import exportar_excel
-from .indice import conectar, indexar
+from .busqueda import OPERADORES_MONTO, Filtro, buscar, copiar, leer_lista, nombre_tipo
+from .campos import CAMPOS, mostrar, normalizar
+from .exportar import a_excel, exportar_indice
+from .indice import conectar, indexar, reextraer
 
+TITULO = "Buscador de remitos y facturas"
 ULTIMA_CARPETA = os.path.join(config.BASE_DIR, "ultima_carpeta.txt")
-COLUMNAS = ("Buscado", "Resultado", "Remito", "Fecha", "Cliente", "Pedido", "Archivo")
+MAX_FILAS = 2000                 # en la tabla; el Excel lleva todas
+TODOS = "Todos"
 MOVIDOS = ("El índice tiene guardada una ubicación vieja (se movieron archivos, se renombró "
            "la carpeta o se borraron). Volvé a indexar la carpeta donde están ahora.")
+# Columnas de la tabla: (id, título, ancho en caracteres)
+COLUMNAS = ([("buscado", "Buscado", 14), ("resultado", "Resultado", 34)]
+            + [(c.nombre, c.etiqueta, c.ancho) for c in CAMPOS] + [("archivo", "Archivo", 24)])
 
 
 def miles(n):
@@ -29,43 +35,91 @@ def duracion(seg):
     return f"{h} h {m} min" if h else f"{m} min"
 
 
+def caja_de_texto(padre, titulo, alto=5):
+    marco = ttk.Frame(padre)
+    ttk.Label(marco, text=titulo).pack(anchor="w")
+    texto = tk.Text(marco, height=alto, width=30)
+    texto.pack(fill="both", expand=True)
+    return marco, texto
+
+
 class App:
     def __init__(self, root):
         self.root = root
-        root.title("Buscador de remitos")
-        root.geometry("1050x680")
+        root.title(TITULO)
+        root.geometry("1250x760")
+        if os.name == "nt":
+            root.state("zoomed")          # maximizada: la tabla tiene muchas columnas
         root.report_callback_exception = lambda *e: messagebox.showerror(
             "Error", "".join(traceback.format_exception(*e)[-1:]))
         root.protocol("WM_DELETE_WINDOW", self.cerrar)
         f = ttk.Frame(root, padding=10)
         f.pack(fill="both", expand=True)
 
-        # Búsqueda
-        t = ttk.Frame(f)
-        t.pack(fill="x", pady=(0, 4))
-        ttk.Label(t, text="Pegá uno o varios números de remito "
-                          "(podés copiar una columna entera de Excel), o").pack(side="left")
-        ttk.Button(t, text="Cargar desde Excel…", command=self.cargar_excel).pack(
-            side="left", padx=6)
-        self.entrada = tk.Text(f, height=5)
-        self.entrada.pack(fill="x")
+        # Números y clientes
+        cajas = ttk.Frame(f)
+        cajas.pack(fill="x")
+        m, self.numeros = caja_de_texto(cajas, "Números (uno por renglón; se puede pegar una "
+                                               "columna de Excel)")
+        m.pack(side="left", fill="both", expand=True)
+        ttk.Button(m, text="Cargar números desde Excel…", command=self.cargar_excel).pack(
+            anchor="w", pady=(4, 0))
+        m, self.clientes = caja_de_texto(cajas, "Clientes: nombre, código o CUIT (uno por "
+                                                "renglón)")
+        m.pack(side="left", fill="both", expand=True, padx=(10, 0))
+
+        # Filtros
+        fl = ttk.Frame(f)
+        fl.pack(fill="x", pady=(8, 0))
+        self.tipos = {TODOS: None} | {t.nombre: k for k, t in config.CFG.tipos.items()}
+        self.tipo = tk.StringVar(value=TODOS)
+        self.desde, self.hasta, self.monto, self.texto = (tk.StringVar() for _ in range(4))
+        self.monto_op = tk.StringVar()
+        self.vinculados = tk.BooleanVar(value=True)
+        for etiqueta, widget in (
+                ("Tipo", ttk.Combobox(fl, textvariable=self.tipo, values=list(self.tipos),
+                                      state="readonly", width=10)),
+                ("Fecha desde", ttk.Entry(fl, textvariable=self.desde, width=11)),
+                ("hasta", ttk.Entry(fl, textvariable=self.hasta, width=11)),
+                ("Monto", ttk.Combobox(fl, textvariable=self.monto_op, state="readonly",
+                                       values=("",) + OPERADORES_MONTO, width=3)),
+                ("", ttk.Entry(fl, textvariable=self.monto, width=12)),
+                ("Contiene el texto", ttk.Entry(fl, textvariable=self.texto, width=20))):
+            if etiqueta:
+                ttk.Label(fl, text=etiqueta).pack(side="left", padx=(10, 4))
+            widget.pack(side="left")
+        ttk.Checkbutton(fl, text="Incluir remitos/facturas vinculados",
+                        variable=self.vinculados).pack(side="left", padx=(14, 0))
+        ttk.Label(f, text="Fechas como dd/mm/aaaa. Monto: elegí <, > o = y escribí el "
+                          "importe (por ejemplo 1.234,56).", foreground="gray").pack(anchor="w")
+
         b = ttk.Frame(f)
         b.pack(fill="x", pady=6)
-        ttk.Button(b, text="Buscar", command=self.buscar).pack(side="left")
-        ttk.Button(b, text="Resultados a Excel", command=self.a_excel).pack(side="left", padx=6)
-        ttk.Button(b, text="Copiar remitos a una carpeta", command=self.copiar).pack(
-            side="left")
+        for texto, accion in (("Buscar", self.buscar), ("Limpiar", self.limpiar),
+                              ("Resultados a Excel", self.a_excel),
+                              ("Copiar documentos a una carpeta", self.copiar)):
+            ttk.Button(b, text=texto, command=accion).pack(side="left", padx=(0, 6))
+        self.cantidad = tk.StringVar()
+        ttk.Label(b, textvariable=self.cantidad).pack(side="left", padx=10)
 
-        self.tabla = ttk.Treeview(f, columns=COLUMNAS + ("ruta",), displaycolumns=COLUMNAS,
-                                  show="headings")
-        for c, ancho in zip(COLUMNAS, (120, 150, 130, 85, 250, 130, 180)):
-            self.tabla.heading(c, text=c)
-            self.tabla.column(c, width=ancho)
+        # Resultados
+        t = ttk.Frame(f)
+        t.pack(fill="both", expand=True)
+        self.tabla = ttk.Treeview(t, columns=[c for c, _, _ in COLUMNAS], show="headings")
+        for c, titulo, ancho in COLUMNAS:
+            self.tabla.heading(c, text=titulo)
+            self.tabla.column(c, width=ancho * 7, stretch=False)
         self.tabla.tag_configure("no", background="#F8D7DA")
         self.tabla.tag_configure("revisar", background="#FFF3CD")
         self.tabla.bind("<Double-1>", self.abrir)
+        xs = ttk.Scrollbar(t, orient="horizontal", command=self.tabla.xview)
+        ys = ttk.Scrollbar(t, orient="vertical", command=self.tabla.yview)
+        self.tabla.configure(xscrollcommand=xs.set, yscrollcommand=ys.set)
+        ys.pack(side="right", fill="y")
+        xs.pack(side="bottom", fill="x")
         self.tabla.pack(fill="both", expand=True)
-        ttk.Label(f, text="Doble clic en una fila para abrir el remito.").pack(anchor="w")
+        ttk.Label(f, text="Doble clic en una fila para abrir el documento.").pack(anchor="w")
+        self.resultados = []
 
         # Índice
         ttk.Separator(f).pack(fill="x", pady=8)
@@ -84,115 +138,165 @@ class App:
         self.info = tk.StringVar()
         ttk.Label(f, textvariable=self.info).pack(anchor="w")
 
-        self.hilo = None
         self.parar = threading.Event()
-        self.actualizar_info()
+        self.avance = None
+        # Si cambió config.toml, los datos se recalculan del texto ya leído (sin OCR)
+        self.progreso.set("Revisando si hay que actualizar los datos con la configuración…")
+        self._en_segundo_plano(self._actualizar_datos)
 
     # ------------------------------------------------------------ búsqueda
 
-    def consultas(self):
-        """Pasa lo pegado a un .txt y lo lee igual que una lista (mismas reglas que la consola)."""
-        ruta = os.path.join(tempfile.gettempdir(), "remitos_lista.txt")
+    def filtro(self):
+        """Arma el Filtro con lo que hay en la ventana, o avisa qué está mal y devuelve None."""
+        ruta = os.path.join(tempfile.gettempdir(), "buscador_numeros.txt")
         with open(ruta, "w", encoding="utf-8") as fh:
-            fh.write(self.entrada.get("1.0", "end"))
-        return ruta, leer_lista(ruta)
+            fh.write(self.numeros.get("1.0", "end"))
+        fechas = {}
+        for nombre, var in (("desde", self.desde), ("hasta", self.hasta)):
+            v = var.get().strip()
+            fechas[nombre] = normalizar("fecha", v) if v else None
+            if v and not fechas[nombre]:
+                return self._aviso(f"La fecha '{v}' no es válida. Usá dd/mm/aaaa.")
+        op, monto = self.monto_op.get() or None, None
+        if op:
+            monto = normalizar("monto", self.monto.get())
+            if monto is None:
+                return self._aviso("Escribí el monto, por ejemplo 1.234,56.")
+        filtro = Filtro(
+            numeros=leer_lista(ruta), tipo=self.tipos[self.tipo.get()],
+            desde=fechas["desde"], hasta=fechas["hasta"], monto_op=op, monto=monto,
+            clientes=[c.strip() for c in self.clientes.get("1.0", "end").splitlines()
+                      if c.strip()],
+            texto=self.texto.get().strip() or None)
+        if filtro.vacio():
+            return self._aviso("Escribí algún número o elegí algún filtro.")
+        return filtro
+
+    def _aviso(self, texto):
+        messagebox.showinfo(TITULO, texto)
+        return None
+
+    def buscar(self):
+        filtro = self.filtro()
+        if not filtro:
+            return
+        self.resultados = buscar(conectar(), filtro, self.vinculados.get())
+        self.tabla.delete(*self.tabla.get_children())
+        for n, r in enumerate(self.resultados[:MAX_FILAS]):
+            fila = r.fila or {}
+            valores = [r.buscado, r.etiqueta]
+            valores += [nombre_tipo(fila.get(c.nombre)) if c.nombre == "tipo" and fila
+                        else mostrar(c.tipo, fila.get(c.nombre)) for c in CAMPOS]
+            valores.append(os.path.basename(fila["ruta"]) if fila else "")
+            tags = ("no",) if not r.fila else ("revisar",) if r.revisar else ()
+            self.tabla.insert("", "end", iid=str(n), values=valores, tags=tags)
+        total = len(self.resultados)
+        self.cantidad.set(f"{miles(total)} resultado(s)" + (
+            f"; se muestran los primeros {miles(MAX_FILAS)}, el Excel lleva todos"
+            if total > MAX_FILAS else ""))
 
     def cargar_excel(self):
-        """Lee los números de la primera columna con datos (igual que antes) y los busca."""
+        """Lee los números de la primera columna con datos de un Excel y los busca."""
         ruta = filedialog.askopenfilename(
-            title="Excel con los números de remito",
-            filetypes=[("Excel", "*.xlsx *.xlsm"), ("Texto", "*.txt *.csv")])
+            title="Excel con los números", filetypes=[("Excel", "*.xlsx *.xlsm"),
+                                                      ("Texto", "*.txt *.csv")])
         if not ruta:
             return
         try:
             numeros = leer_lista(ruta)
-        except SystemExit as e:              # p. ej. un .xls viejo: se explica qué hacer
-            messagebox.showwarning("Buscador de remitos", str(e))
+        except ValueError as e:              # p. ej. un .xls viejo: se explica qué hacer
+            messagebox.showwarning(TITULO, str(e))
             return
-        self.entrada.delete("1.0", "end")
-        self.entrada.insert("1.0", "\n".join(numeros))
+        self.numeros.delete("1.0", "end")
+        self.numeros.insert("1.0", "\n".join(numeros))
         self.buscar()
 
-    def buscar(self):
-        _, consultas = self.consultas()
+    def limpiar(self):
+        self.numeros.delete("1.0", "end")
+        self.clientes.delete("1.0", "end")
+        for v in (self.desde, self.hasta, self.monto, self.monto_op, self.texto):
+            v.set("")
+        self.tipo.set(TODOS)
         self.tabla.delete(*self.tabla.get_children())
-        con = conectar()
-        todas, dudosos = cargar(con)
-        for q in consultas:
-            c = parsear_consulta(q)
-            por_remito, posibles, por_pedido = (resolver(con, todas, dudosos, c, q)
-                                                if c else ([], [], []))
-            filas = ([("Encontrado", r, ()) for r in por_remito]
-                     + [("Posible (revisar)", r, ("revisar",)) for r in posibles])
-            filas += [("Por pedido" if filas else "Solo por pedido (revisar)", r,
-                       () if filas else ("revisar",)) for r in por_pedido]
-            if not filas:
-                self.tabla.insert("", "end", values=(q, "NO ENCONTRADO"), tags=("no",))
-            for etiqueta, (ruta, remito, pedido, fecha, cliente), tags in filas:
-                self.tabla.insert("", "end", tags=tags, values=(
-                    q, etiqueta, remito, fecha, cliente, pedido, os.path.basename(ruta), ruta))
+        self.resultados = []
+        self.cantidad.set("")
 
     def a_excel(self):
-        ruta, consultas = self.consultas()
-        if not consultas:
-            messagebox.showinfo("Buscador de remitos", "Primero pegá algún número.")
-            return
-        buscar_lista(ruta, "auto", None, abrir=True)
+        if not self.resultados:
+            return self._aviso("Primero buscá algo.")
+        a_excel(self.resultados, abrir=True)
 
     def copiar(self):
-        """Copia los archivos de la tabla (lo último buscado) a Resultados/Encontrados_<fecha>,
-        con las coincidencias por pedido en una subcarpeta, y abre la carpeta."""
-        remitos, pedidos = [], []
-        for it in self.tabla.get_children():
-            ruta = self.tabla.set(it, "ruta")
-            if ruta:
-                (pedidos if "pedido" in self.tabla.set(it, "Resultado") else remitos).append(ruta)
-        if not remitos and not pedidos:
-            messagebox.showinfo("Buscador de remitos", "Primero buscá algún número.")
-            return
-        faltan = {r for r in remitos + pedidos if not os.path.exists(r)}
+        """Copia los documentos encontrados a Resultados/Encontrados_<fecha> (las
+        coincidencias por otro número, como el pedido, en una subcarpeta) y abre la carpeta."""
+        rutas = [(r.fila["ruta"], r.secundario) for r in self.resultados if r.fila]
+        if not rutas:
+            return self._aviso("Primero buscá algo.")
+        faltan = {r for r, _ in rutas if not os.path.exists(r)}
         if faltan:
-            messagebox.showwarning("Buscador de remitos", f"{len(faltan)} remito(s) no se "
-                                   f"copiaron. {MOVIDOS}")
-        remitos = [r for r in remitos if r not in faltan]
-        pedidos = [r for r in pedidos if r not in faltan]
-        if not remitos and not pedidos:
+            messagebox.showwarning(TITULO, f"{len(faltan)} documento(s) no se copiaron. "
+                                           f"{MOVIDOS}")
+        principales = [r for r, sec in rutas if not sec and r not in faltan]
+        secundarios = [r for r, sec in rutas if sec and r not in faltan]
+        if not principales and not secundarios:
             return
-        carpeta = os.path.join(config.SALIDAS, f"Encontrados_{datetime.now():%Y-%m-%d_%H%M}")
-        _copiar(remitos, carpeta)
-        if pedidos:
-            _copiar(pedidos, os.path.join(carpeta, "Coincidencias por pedido"))
+        carpeta = os.path.join(config.SALIDAS, f"Encontrados_{datetime.now():%Y-%m-%d_%H%M%S}")
+        copiar(principales, carpeta)
+        if secundarios:
+            copiar(secundarios, os.path.join(carpeta, "Coincidencias por otro número"))
         os.startfile(carpeta)
 
     def abrir(self, _evento):
-        ruta = self.tabla.set(self.tabla.focus(), "ruta")
-        if ruta and not os.path.exists(ruta):
-            messagebox.showwarning("Buscador de remitos", f"No encontré {ruta}. {MOVIDOS}")
-        elif ruta:
-            os.startfile(ruta)
+        sel = self.tabla.focus()
+        fila = self.resultados[int(sel)].fila if sel else None
+        if not fila:
+            return
+        if not os.path.exists(fila["ruta"]):
+            messagebox.showwarning(TITULO, f"No encontré {fila['ruta']}. {MOVIDOS}")
+        else:
+            os.startfile(fila["ruta"])
 
     def exportar(self):
         self.root.config(cursor="watch")
         self.root.update()
         try:
-            exportar_excel(abrir=True)
+            exportar_indice(abrir=True)
         finally:
             self.root.config(cursor="")
 
     # ------------------------------------------------------------ indexado
 
     def actualizar_info(self):
-        total, parciales = conectar().execute(
+        con = conectar()
+        total, parciales = con.execute(
             "SELECT count(*), coalesce(sum(parcial), 0) FROM docs").fetchone()
-        extra = f" ({miles(parciales)} todavía sin texto completo)" if parciales else ""
-        self.info.set(f"{miles(total)} remitos en el índice{extra}.")
+        por_tipo = ", ".join(f"{nombre_tipo(t)}: {miles(n)}" for t, n in con.execute(
+            "SELECT tipo, count(*) FROM docs GROUP BY tipo ORDER BY tipo"))
+        extra = f"; {miles(parciales)} todavía sin texto completo" if parciales else ""
+        self.info.set(f"{miles(total)} documentos en el índice"
+                      f"{f' ({por_tipo})' if por_tipo else ''}{extra}.")
+
+    def _en_segundo_plano(self, tarea, *args):
+        self.boton_indexar["state"] = "disabled"
+        self.hilo = threading.Thread(target=tarea, args=args, daemon=True)
+        self.hilo.start()
+        self.root.after(300, self.mirar)
+
+    def _actualizar_datos(self):
+        try:
+            n = reextraer(conectar())
+            self.fin = (f"Se actualizaron los datos de {miles(n)} documentos con la "
+                        "configuración actual (sin volver a leerlos)." if n else "")
+        except Exception as e:  # noqa: BLE001
+            self.fin = f"Error al actualizar los datos: {e}"
 
     def indexar(self):
         inicial = None
         if os.path.exists(ULTIMA_CARPETA):
             with open(ULTIMA_CARPETA, encoding="utf-8") as fh:
                 inicial = fh.read().strip()
-        carpeta = filedialog.askdirectory(title="Carpeta de los remitos", initialdir=inicial)
+        carpeta = filedialog.askdirectory(title="Carpeta de los documentos",
+                                          initialdir=inicial)
         if not carpeta:
             return
         with open(ULTIMA_CARPETA, "w", encoding="utf-8") as fh:
@@ -200,11 +304,8 @@ class App:
         self.parar.clear()
         self.avance = self.paso = None
         self.progreso.set("Buscando archivos en la carpeta…")
-        self.boton_indexar["state"] = "disabled"
         self.boton_pausar["state"] = "normal"
-        self.hilo = threading.Thread(target=self._indexar, args=(carpeta,), daemon=True)
-        self.hilo.start()
-        self.root.after(500, self.mirar)
+        self._en_segundo_plano(self._indexar, carpeta)
 
     def _indexar(self, carpeta):
         try:
@@ -242,14 +343,12 @@ class App:
         self.progreso.set("Pausando… (termina los archivos que está leyendo)")
 
     def cerrar(self):
-        if self.hilo and self.hilo.is_alive():
-            if not messagebox.askyesno("Buscador de remitos", "Se está indexando. ¿Pausar y "
-                                       "salir? La próxima vez sigue donde quedó."):
+        if self.hilo.is_alive() and self.boton_pausar["state"] == "normal":
+            if not messagebox.askyesno(TITULO, "Se está indexando. ¿Pausar y salir? La "
+                                               "próxima vez sigue donde quedó."):
                 return
             self.pausar()
-            self._esperar_y_cerrar()
-        else:
-            self.root.destroy()
+        self._esperar_y_cerrar()
 
     def _esperar_y_cerrar(self):
         if self.hilo.is_alive():
