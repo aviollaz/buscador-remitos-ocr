@@ -54,11 +54,16 @@ def leer_zona_numero(gris):
     return lecturas, "\n".join(textos)
 
 
-def leer_imagen(img):
-    """OCR de la página completa + relectura de la zona del número.
-    Devuelve (texto, lecturas_zona, texto_zona)."""
+def leer_imagen(img, paso=None):
+    """OCR de la página + relectura de la zona del número. Devuelve (texto, lecturas_zona,
+    texto_zona). paso=1: solo el encabezado (rápido); paso=2: solo la página completa."""
     gris = ImageOps.exif_transpose(img).convert("L")
-    texto = pytesseract.image_to_string(preparar(gris), lang=IDIOMA, config="--psm 3")
+    pagina = gris
+    if paso == 1:
+        pagina = gris.crop((0, 0, gris.width, int(gris.height * OCR["alto_encabezado"])))
+    texto = pytesseract.image_to_string(preparar(pagina), lang=IDIOMA, config="--psm 3")
+    if paso == 2:
+        return texto, [], ""
     lecturas, texto_zona = leer_zona_numero(gris)
     return texto, lecturas, texto_zona
 
@@ -73,7 +78,7 @@ def es_escaneo(pagina):
     return False
 
 
-def paginas_pdf(ruta):
+def paginas_pdf(ruta, paso=None):
     """PDF digital: se usa su texto (exacto). PDF escaneado: se ignora la "capa de texto"
     que agregan muchos escáneres/apps (suele ser mala) y se hace OCR propio."""
     import pymupdf
@@ -84,18 +89,19 @@ def paginas_pdf(ruta):
                 yield t, [], ""
             else:
                 pix = pagina.get_pixmap(dpi=OCR["dpi_pdf"], colorspace=pymupdf.csGRAY)
-                yield leer_imagen(Image.frombytes("L", (pix.width, pix.height), pix.samples))
+                yield leer_imagen(Image.frombytes("L", (pix.width, pix.height), pix.samples),
+                                  paso)
 
 
-def procesar(ruta):
-    """Lee un archivo y devuelve una fila lista para el índice.
+def procesar(ruta, paso=None):
+    """Lee un archivo y devuelve una fila lista para el índice (paso: ver leer_imagen).
     Corre en procesos separados (multiprocessing), por eso nunca lanza excepciones."""
     try:
         if ruta.lower().endswith(".pdf"):
-            partes = list(paginas_pdf(ruta))
+            partes = list(paginas_pdf(ruta, paso))
         else:
             with Image.open(ruta) as im:
-                partes = [leer_imagen(im)]
+                partes = [leer_imagen(im, paso)]
         texto = "\n".join(p[0] for p in partes)
         lecturas = [x for p in partes for x in p[1]]
         texto_zona = "\n".join(p[2] for p in partes)

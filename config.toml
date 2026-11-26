@@ -26,3 +26,6 @@ ancho_pagina = 2000
 ancho_zona = 1400
 # Resolución con la que se renderizan los PDF escaneados.
 dpi_pdf = 300
+# Parte de arriba de la página (fracción del alto) que se lee en la lectura rápida
+# (paso 1 del indexado). Tiene que incluir número, fecha, cliente y pedido.
+alto_encabezado = 0.45

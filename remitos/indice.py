@@ -13,14 +13,15 @@ from . import config
 #   < 4: solo los documentos donde no se había detectado número
 VERSION = 4
 COLUMNAS = ["ruta", "mtime", "texto", "remito", "pedido", "fecha", "cliente", "version",
-            "dudoso", "alternativas"]
+            "dudoso", "alternativas", "parcial"]
 _TIPOS_NUEVOS = {"version": "INTEGER DEFAULT 1", "dudoso": "INTEGER DEFAULT 0",
-                 "alternativas": "TEXT DEFAULT ''"}
+                 "alternativas": "TEXT DEFAULT ''", "parcial": "INTEGER DEFAULT 0"}
 COMMIT_CADA = 20
 
 
 def conectar(db=None):
     con = sqlite3.connect(db or config.DB)
+    con.execute("PRAGMA journal_mode=WAL")      # permite buscar mientras se indexa
     cols = [r[1] for r in con.execute("PRAGMA table_info(docs)")]
     if cols and cols == COLUMNAS[:len(cols)]:
         for c in COLUMNAS[len(cols):]:          # índice de una versión anterior: se migra
@@ -30,7 +31,7 @@ def conectar(db=None):
     con.execute("""CREATE TABLE IF NOT EXISTS docs (
         ruta TEXT PRIMARY KEY, mtime REAL, texto TEXT,
         remito TEXT, pedido TEXT, fecha TEXT, cliente TEXT, version INTEGER,
-        dudoso INTEGER DEFAULT 0, alternativas TEXT DEFAULT '')""")
+        dudoso INTEGER DEFAULT 0, alternativas TEXT DEFAULT '', parcial INTEGER DEFAULT 0)""")
     return con
 
 
@@ -60,9 +61,28 @@ def buscar_archivos(carpeta, ya):
     return pendientes, vistos, ignorados
 
 
-def indexar(carpeta, workers=None):
+def _avance_consola(paso, i, total):
+    print(f"\r  Paso {paso}/2: {i}/{total}", end="", flush=True)
+
+
+def _correr(rutas, paso, workers, avance, parar):
+    """Procesa los archivos en paralelo y va devolviendo las filas a medida que terminan."""
     from .ocr import procesar
 
+    with ProcessPoolExecutor(max_workers=workers) as ex:
+        futuros = [ex.submit(procesar, p, paso) for p in rutas]
+        for i, f in enumerate(as_completed(futuros), 1):
+            yield f.result()
+            avance(paso, i, len(rutas))
+            if parar and parar():
+                ex.shutdown(cancel_futures=True)
+                return
+
+
+def indexar(carpeta, workers=None, avance=_avance_consola, parar=None):
+    """Paso 1: lectura rápida (solo el encabezado): deja todo buscable por número cuanto antes.
+    Paso 2: texto completo de la página, para la búsqueda por texto.
+    `parar` es una función que devuelve True para cortar (se retoma en la próxima vez)."""
     workers = workers or max(1, (os.cpu_count() or 2) - 1)
     con = conectar()
     carpeta = carpeta.strip().strip('"').strip()
@@ -81,8 +101,6 @@ def indexar(carpeta, workers=None):
     if vistos == 0 and not ignorados:
         print("La carpeta está vacía. Si los archivos están en OneDrive o en un .zip, "
               "descargalos/descomprimilos primero.")
-    if not total:
-        return
     if any(p.lower().endswith(".pdf") for p in pendientes):
         try:
             import pymupdf  # noqa: F401
@@ -90,22 +108,38 @@ def indexar(carpeta, workers=None):
             sys.exit("ERROR: falta la librería para PDF. Ejecutá: pip install pymupdf")
 
     errores = sin_numero = dudosos = 0
-    with ProcessPoolExecutor(max_workers=workers) as ex:
-        futuros = [ex.submit(procesar, p) for p in pendientes]
-        for i, f in enumerate(as_completed(futuros), 1):
-            ruta, texto, remito, pedido, fecha, cliente, dudoso, alternativas, err = f.result()
-            if err:
-                errores += 1
-                print(f"\n  ERROR {ruta}: {err}", file=sys.stderr)
-                continue
-            sin_numero += not remito
-            dudosos += dudoso
-            con.execute("INSERT OR REPLACE INTO docs VALUES (?,?,?,?,?,?,?,?,?,?)",
-                        (ruta, os.path.getmtime(ruta), texto, remito, pedido, fecha, cliente,
-                         VERSION, dudoso, alternativas))
-            if i % COMMIT_CADA == 0:
-                con.commit()
-            print(f"\r  {i}/{total}", end="", flush=True)
+    for i, fila in enumerate(_correr(pendientes, 1, workers, avance, parar), 1):
+        ruta, texto, remito, pedido, fecha, cliente, dudoso, alternativas, err = fila
+        if err:
+            errores += 1
+            print(f"\n  ERROR {ruta}: {err}", file=sys.stderr)
+            continue
+        sin_numero += not remito
+        dudosos += dudoso
+        con.execute("INSERT OR REPLACE INTO docs VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (ruta, os.path.getmtime(ruta), texto, remito, pedido, fecha, cliente,
+                     VERSION, dudoso, alternativas, 1))
+        if i % COMMIT_CADA == 0:
+            con.commit()
     con.commit()
-    print(f"\nListo. Errores: {errores}. Sin número de remito: {sin_numero}. "
-          f"Lectura dudosa: {dudosos} (marcados en el Excel del índice).")
+    if total:
+        print(f"\nLectura rápida lista. Errores: {errores}. Sin número de remito: {sin_numero}. "
+              f"Lectura dudosa: {dudosos} (marcados en el Excel del índice).")
+    if parar and parar():
+        return
+
+    parciales = [r for (r,) in con.execute("SELECT ruta FROM docs WHERE parcial = 1")
+                 if os.path.exists(r)]
+    for i, fila in enumerate(_correr(parciales, 2, workers, avance, parar), 1):
+        ruta, texto, _, pedido, fecha, cliente, *_, err = fila
+        if not err:   # con el texto completo se completan los datos que faltaran
+            con.execute("""UPDATE docs SET texto = ?, parcial = 0,
+                pedido = CASE WHEN pedido = '' THEN ? ELSE pedido END,
+                fecha = CASE WHEN fecha = '' THEN ? ELSE fecha END,
+                cliente = CASE WHEN cliente = '' THEN ? ELSE cliente END
+                WHERE ruta = ?""", (texto, pedido, fecha, cliente, ruta))
+        if i % COMMIT_CADA == 0:
+            con.commit()
+    con.commit()
+    if parciales:
+        print("\nTexto completo listo.")

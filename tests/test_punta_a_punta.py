@@ -27,9 +27,12 @@ def test_indexar_y_buscar(tmp_path, monkeypatch, capsys):
     salida = capsys.readouterr().out
     assert "3 archivos encontrados" in salida and ".txt: 1" in salida
 
-    filas = dict(conectar().execute("SELECT ruta, remito FROM docs").fetchall())
+    filas = {r: (rem, texto, parcial) for r, rem, texto, parcial in conectar().execute(
+        "SELECT ruta, remito, texto, parcial FROM docs")}
     for nombre, v in verdad.items():
-        assert filas[str(carpeta / nombre)] == v["remito"]
+        remito, texto, parcial = filas[str(carpeta / nombre)]
+        assert remito == v["remito"]
+        assert parcial == 0 and "traslado" in texto        # el paso 2 leyó la página entera
 
     # Indexar de nuevo no relee nada
     indexar(str(tmp_path / "scans"), workers=2)

@@ -21,7 +21,8 @@ _DEFAULTS = {
         "fin_cliente": r"C\w{0,3}nte",
         "zona_numero": [0.45, 0.0, 1.0, 0.16],
     },
-    "ocr": {"idioma": "spa", "ancho_pagina": 2000, "ancho_zona": 1400, "dpi_pdf": 300},
+    "ocr": {"idioma": "spa", "ancho_pagina": 2000, "ancho_zona": 1400, "dpi_pdf": 300,
+            "alto_encabezado": 0.45},
 }
 
 

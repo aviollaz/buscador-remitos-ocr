@@ -50,7 +50,7 @@ def con():
         ("r3.jpg", "", "", 1, "00007-0006"),
     ]
     for ruta, remito, pedido, dudoso, alt in filas:
-        c.execute("INSERT INTO docs VALUES (?,?,?,?,?,?,?,?,?,?)",
+        c.execute("INSERT INTO docs VALUES (?,?,?,?,?,?,?,?,?,?,0)",
                   (ruta, 0, f"texto {remito} 44474", remito, pedido, "", "", 4, dudoso, alt))
     return c
 
