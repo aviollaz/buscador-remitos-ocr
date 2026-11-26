@@ -163,7 +163,7 @@ def leer_lista(ruta):
             valores = columnas[min(columnas)]
     elif ext == ".xls":
         sys.exit("El archivo es .xls (Excel viejo). Guardalo como .xlsx, o copiá la columna "
-                 "y pegala en la opción de Bloc de notas.")
+                 "y pegala en el buscador.")
     else:
         with open(ruta, encoding="utf-8-sig", errors="replace") as f:
             for linea in f:

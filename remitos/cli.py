@@ -42,6 +42,7 @@ def main(argv=None):
     p.add_argument("--abrir", action="store_true")
     sub.add_parser("exportar", help="exportar todo el índice a CSV").add_argument("salida")
     sub.add_parser("verificar", help="comprobar la instalación de Tesseract")
+    sub.add_parser("gui", help="abrir la ventana del buscador")
 
     a = ap.parse_args(argv)
     if a.cmd == "indexar":
@@ -64,3 +65,6 @@ def main(argv=None):
         exportar_csv(a.salida)
     elif a.cmd == "verificar":
         verificar()
+    elif a.cmd == "gui":
+        from .gui import main as gui
+        gui()

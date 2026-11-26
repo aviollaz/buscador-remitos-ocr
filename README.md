@@ -31,7 +31,7 @@ cruzar remitos al cargar facturas, sobre un archivo de **~45.000 remitos por añ
 | **Exportar el índice** | Excel con todos los remitos ordenados por número, con filtros y los de lectura dudosa resaltados para revisar a mano. |
 
 Pensado para usuarios no técnicos: en Windows se instala con un doble clic (Python y
-Tesseract vía `winget`) y se usa con archivos `.bat` numerados.
+Tesseract vía `winget`) y se usa desde una ventana con botones.
 
 ## Cómo funciona
 
@@ -118,14 +118,15 @@ publican por confidencialidad):
 1. Descargar el repo (*Code → Download ZIP*) y descomprimirlo.
 2. Doble clic en `windows/1_INSTALAR.bat`: instala Python, Tesseract y las librerías.
    El idioma español ya viene incluido en `tessdata/`.
-3. Usar los demás `.bat`:
-
-| Archivo | Para qué |
-|---|---|
-| `2_INDEXAR.bat` | Arrastrar la carpeta de remitos y Enter. |
-| `3_BUSCAR.bat` | Buscar un número (o un cliente). |
-| `4_BUSCAR_LISTA.bat` | Arrastrar un Excel con números → Excel de resultados. |
-| `5_EXPORTAR_EXCEL.bat` | Excel con todo el índice. |
+3. Doble clic en `windows/2_ABRIR_BUSCADOR.bat`. En la ventana:
+   - **Buscar:** pegar uno o varios números (por ejemplo, una columna copiada de Excel)
+     o cargarlos desde un Excel. Doble clic en un resultado abre el remito; *Resultados a
+     Excel* arma el Excel de resultados y, si se marca, copia los remitos encontrados a
+     una carpeta.
+   - **Indexar carpeta:** en dos pasos. El primero lee solo el encabezado (número, fecha,
+     cliente, pedido) y deja todo buscable por número cuanto antes; el segundo completa el
+     texto de la página. Se puede pausar o cerrar y sigue donde quedó.
+   - **Exportar índice completo a Excel.**
 
 ### Desarrollo (Linux / macOS / Windows)
 ```bash
@@ -184,7 +185,8 @@ remitos/
   busqueda.py    búsqueda exacta, por pedido, casi coincidencias y búsqueda por lista
   exportar.py    índice a Excel / CSV
   cli.py         línea de comandos
-windows/         instalador y lanzadores .bat para usuarios finales
+  gui.py         ventana (tkinter)
+windows/         instalador y lanzador de la ventana para usuarios finales
 tests/           generador de remitos sintéticos, evaluación y tests
 ```
 
