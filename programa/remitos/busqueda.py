@@ -199,6 +199,7 @@ def buscar_lista(entrada, salida="auto", copiar=None, abrir=False):
         salida = os.path.join(config.SALIDAS, f"Resultados_{sello}.xlsx")
     if copiar == "auto":
         copiar = os.path.join(config.SALIDAS, f"Encontrados_{sello}")
+    os.makedirs(os.path.dirname(os.path.abspath(salida)), exist_ok=True)
 
     consultas = leer_lista(entrada)
     if not consultas:

@@ -8,8 +8,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Índice SQLite (se puede cambiar con la variable de entorno REMITOS_DB, útil para tests)
 DB = os.environ.get("REMITOS_DB", os.path.join(BASE_DIR, "remitos.db"))
 
-# Carpeta donde se generan los Excel de resultados y las copias de archivos
-SALIDAS = os.environ.get("REMITOS_SALIDAS", BASE_DIR)
+# Carpeta donde se generan los Excel de resultados y las copias de archivos: "Resultados",
+# al lado de la carpeta del programa, para que sea fácil de encontrar
+SALIDAS = os.environ.get("REMITOS_SALIDAS",
+                         os.path.join(os.path.dirname(BASE_DIR), "Resultados"))
 
 EXTS = {".jpg", ".jpeg", ".jfif", ".jpe", ".png", ".tif", ".tiff", ".bmp", ".webp", ".gif",
         ".pdf"}

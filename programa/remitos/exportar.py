@@ -26,6 +26,7 @@ def exportar_excel(salida=None, abrir=False):
 
     salida = salida or os.path.join(
         config.SALIDAS, f"Indice_remitos_{datetime.now():%Y-%m-%d_%H%M}.xlsx")
+    os.makedirs(os.path.dirname(os.path.abspath(salida)), exist_ok=True)
     con = conectar()
     wb = openpyxl.Workbook()
     ws = wb.active

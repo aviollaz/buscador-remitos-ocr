@@ -8,7 +8,7 @@ Está en uso en el área contable de una empresa de alimentos: **3 personas** lo
 cruzar remitos al cargar facturas, sobre un archivo de **~45.000 remitos por año**.
 
 <p align="center">
-  <img src="docs/remito_sintetico.png" width="420" alt="Remito sintético con la zona del número marcada">
+  <img src="programa/docs/remito_sintetico.png" width="420" alt="Remito sintético con la zona del número marcada">
   <br><sub>Remito <b>sintético</b> (datos inventados). En rojo, la zona que se relee solo con dígitos.</sub>
 </p>
 
@@ -91,7 +91,7 @@ publican por confidencialidad):
 | Solo OCR de la página | 4 / 7 | 4 / 7 |
 | Página + zona del número + votación | **6 / 7** | **7 / 7** (el restante, con un dígito tapado por una raya de birome, se marca como dudoso y aparece como posible) |
 
-**Sobre 150 remitos sintéticos** (reproducible con `python tests/evaluar.py --cantidad 150`):
+**Sobre 150 remitos sintéticos** (reproducible con `python programa/tests/evaluar.py --cantidad 150`):
 
 | Calidad del escaneo | Docs | Solo página | Página + zona |
 |---|---|---|---|
@@ -108,7 +108,7 @@ publican por confidencialidad):
   corre de un día para el otro; después solo se procesa lo nuevo.
 
 <p align="center">
-  <img src="docs/digito_tapado.png" width="420" alt="Número de remito con el último dígito tapado">
+  <img src="programa/docs/digito_tapado.png" width="420" alt="Número de remito con el último dígito tapado">
   <br><sub>El caso más difícil: un dígito tapado. Se marca como dudoso en vez de inventar un número.</sub>
 </p>
 
@@ -116,13 +116,13 @@ publican por confidencialidad):
 
 ### Windows (usuarios finales)
 1. Descargar el repo (*Code → Download ZIP*) y descomprimirlo.
-2. Doble clic en `windows/1_INSTALAR.bat`: instala Python, Tesseract y las librerías.
-   El idioma español ya viene incluido en `tessdata/`.
-3. Doble clic en `windows/2_ABRIR_BUSCADOR.bat`. En la ventana:
-   - **Buscar:** pegar uno o varios números (por ejemplo, una columna copiada de Excel)
-     o cargarlos desde un Excel. Doble clic en un resultado abre el remito; *Resultados a
-     Excel* arma el Excel de resultados y, si se marca, copia los remitos encontrados a
-     una carpeta.
+2. Doble clic en `1 - Instalar (solo la primera vez).bat`: instala Python, Tesseract y
+   las librerías. El idioma español ya viene incluido en `programa/tessdata/`.
+3. Doble clic en `2 - Abrir buscador.bat`. Los Excel de resultados y las copias de remitos
+   quedan en la carpeta `Resultados/`. En la ventana:
+   - **Buscar:** pegar uno o varios números (por ejemplo, una columna copiada de Excel).
+     Doble clic en un resultado abre el remito; *Resultados a Excel* arma el Excel de
+     resultados y, si se marca, copia los remitos encontrados a una carpeta.
    - **Indexar carpeta:** en dos pasos. El primero lee solo el encabezado (número, fecha,
      cliente, pedido) y deja todo buscable por número cuanto antes; el segundo completa el
      texto de la página. Se puede pausar o cerrar y sigue donde quedó.
@@ -131,6 +131,7 @@ publican por confidencialidad):
 ### Desarrollo (Linux / macOS / Windows)
 ```bash
 # Tesseract: apt install tesseract-ocr | brew install tesseract | winget install UB-Mannheim.TesseractOCR
+cd programa
 pip install -r requirements.txt
 python buscar_remitos.py verificar
 ```
@@ -164,6 +165,7 @@ NO ENCONTRADO
 ## Tests
 
 ```bash
+cd programa
 pip install pytest
 pytest                                   # unitarios + punta a punta con OCR real
 python tests/muestras.py demo/ --cantidad 20   # generar remitos sintéticos
@@ -171,23 +173,29 @@ python tests/evaluar.py --cantidad 150   # métricas de precisión
 ```
 
 Los tests y la evaluación usan únicamente **remitos sintéticos** generados por
-[`tests/muestras.py`](tests/muestras.py): empresa, clientes, CUIT y números inventados, con
+[`tests/muestras.py`](programa/tests/muestras.py): empresa, clientes, CUIT y números inventados, con
 degradaciones de escaneo (rotación, desenfoque, baja resolución, motas, sellos, rayas).
 
 ## Estructura
 
 ```
-remitos/
-  config.py      rutas y configuración (config.toml)
-  ocr.py         Tesseract: página completa, zona del número, PDF digital vs escaneado
-  extraccion.py  regex de remito/pedido/fecha/cliente y votación entre lecturas
-  indice.py      SQLite incremental, versionado y migraciones; procesamiento en paralelo
-  busqueda.py    búsqueda exacta, por pedido, casi coincidencias y búsqueda por lista
-  exportar.py    índice a Excel / CSV
-  cli.py         línea de comandos
-  gui.py         ventana (tkinter)
-windows/         instalador y lanzador de la ventana para usuarios finales
-tests/           generador de remitos sintéticos, evaluación y tests
+1 - Instalar (solo la primera vez).bat   instalador para usuarios finales (Windows)
+2 - Abrir buscador.bat                   abre la ventana
+Resultados/      Excel de resultados y copias de remitos (se crea al usarlo)
+programa/
+  buscar_remitos.py  punto de entrada (línea de comandos y ventana)
+  config.toml        formato de los documentos y parámetros del OCR
+  remitos/
+    config.py      rutas y configuración (config.toml)
+    ocr.py         Tesseract: página completa, zona del número, PDF digital vs escaneado
+    extraccion.py  regex de remito/pedido/fecha/cliente y votación entre lecturas
+    indice.py      SQLite incremental en dos pasos, versionado y migraciones; en paralelo
+    busqueda.py    búsqueda exacta, por pedido, casi coincidencias y búsqueda por lista
+    exportar.py    índice a Excel / CSV
+    cli.py         línea de comandos
+    gui.py         ventana (tkinter)
+  tests/           generador de remitos sintéticos, evaluación y tests
+  tessdata/        modelo de español para Tesseract
 ```
 
 ## Limitaciones
@@ -199,5 +207,5 @@ tests/           generador de remitos sintéticos, evaluación y tests
 
 ## Licencia
 
-MIT. El modelo de idioma en `tessdata/` es del proyecto
+MIT. El modelo de idioma en `programa/tessdata/` es del proyecto
 [tesseract-ocr/tessdata](https://github.com/tesseract-ocr/tessdata) (Apache 2.0).
