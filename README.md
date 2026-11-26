@@ -116,10 +116,10 @@ publican por confidencialidad):
 
 ### Windows (usuarios finales)
 1. Descargar el repo (*Code → Download ZIP*) y descomprimirlo.
-2. Doble clic en `1 - Instalar (solo la primera vez).bat`: instala Python, Tesseract y
-   las librerías. El idioma español ya viene incluido en `programa/tessdata/`.
-3. Doble clic en `2 - Abrir buscador.bat`. Los Excel de resultados y las copias de remitos
-   quedan en la carpeta `Resultados/`. En la ventana:
+2. Doble clic en `Instalar.bat` (solo la primera vez): instala Python, Tesseract y las
+   librerías. El idioma español ya viene incluido en `programa/tessdata/`.
+3. Doble clic en `Buscador.bat`. Los Excel de resultados y las copias de remitos quedan en
+   la carpeta `Resultados/`. En la ventana:
    - **Buscar:** pegar uno o varios números (por ejemplo, una columna copiada de Excel).
      Doble clic en un resultado abre el remito; *Resultados a Excel* arma el Excel de
      resultados y, si se marca, copia los remitos encontrados a una carpeta.
@@ -179,8 +179,8 @@ degradaciones de escaneo (rotación, desenfoque, baja resolución, motas, sellos
 ## Estructura
 
 ```
-1 - Instalar (solo la primera vez).bat   instalador para usuarios finales (Windows)
-2 - Abrir buscador.bat                   abre la ventana
+Instalar.bat     instalador para usuarios finales (Windows), solo la primera vez
+Buscador.bat     abre la ventana
 Resultados/      Excel de resultados y copias de remitos (se crea al usarlo)
 programa/
   buscar_remitos.py  punto de entrada (línea de comandos y ventana)
