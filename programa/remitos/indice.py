@@ -5,6 +5,7 @@ import os
 import sqlite3
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from pathlib import PurePath
 
 from . import config
 
@@ -89,6 +90,16 @@ def indexar(carpeta, workers=None, avance=_avance_consola, parar=None):
     print(f"Carpeta: {carpeta}  (incluye subcarpetas)")
     if not os.path.isdir(carpeta):
         sys.exit("ERROR: esa carpeta no existe o no se puede abrir. Revisá la ruta.")
+
+    # Archivos que ya no existen (movidos, carpeta renombrada, borrados): se quitan, salvo
+    # que no esté disponible su disco o unidad de red (p. ej. desconectado por un rato).
+    viejos = [(r,) for (r,) in con.execute("SELECT ruta FROM docs")
+              if not os.path.exists(r) and os.path.exists(PurePath(r).anchor)]
+    if viejos:
+        con.executemany("DELETE FROM docs WHERE ruta = ?", viejos)
+        con.commit()
+        print(f"Se quitaron del índice {len(viejos)} archivos que ya no existen "
+              f"(movidos o borrados).")
 
     ya = {r[0]: r[1:] for r in con.execute("SELECT ruta, mtime, version, remito FROM docs")}
     pendientes, vistos, ignorados = buscar_archivos(carpeta, ya)

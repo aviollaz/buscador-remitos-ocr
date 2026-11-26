@@ -31,3 +31,18 @@ def test_hay_que_leer(tmp_path):
     assert indice.hay_que_leer(str(f), (m, 3, ""))                 # v3 sin número: releer
     assert not indice.hay_que_leer(str(f), (m, 3, "00007-1"))      # v3 con número: no
     assert not indice.hay_que_leer(str(f), (m, v, ""))             # al día
+
+
+def test_indexar_quita_archivos_que_ya_no_existen(tmp_path, monkeypatch):
+    from remitos import config
+    monkeypatch.setattr(config, "DB", str(tmp_path / "t.db"))
+    con = indice.conectar()
+    movido = str(tmp_path / "vieja" / "r.jpg")          # su disco existe: se quita
+    desconectado = "Q:/remitos/r.jpg"                    # su unidad no está: se conserva
+    for r in (movido, desconectado):
+        con.execute("INSERT INTO docs (ruta, remito) VALUES (?, '00007-00000001')", (r,))
+    con.commit()
+    (tmp_path / "scans").mkdir()
+
+    indice.indexar(str(tmp_path / "scans"), workers=1)
+    assert [r for (r,) in indice.conectar().execute("SELECT ruta FROM docs")] == [desconectado]
