@@ -16,6 +16,8 @@ from .indice import conectar, indexar
 
 ULTIMA_CARPETA = os.path.join(config.BASE_DIR, "ultima_carpeta.txt")
 COLUMNAS = ("Buscado", "Resultado", "Remito", "Fecha", "Cliente", "Pedido", "Archivo")
+MOVIDOS = ("El índice tiene guardada una ubicación vieja (se movieron archivos, se renombró "
+           "la carpeta o se borraron). Volvé a indexar la carpeta donde están ahora.")
 
 
 def miles(n):
@@ -148,6 +150,14 @@ class App:
         if not remitos and not pedidos:
             messagebox.showinfo("Buscador de remitos", "Primero buscá algún número.")
             return
+        faltan = {r for r in remitos + pedidos if not os.path.exists(r)}
+        if faltan:
+            messagebox.showwarning("Buscador de remitos", f"{len(faltan)} remito(s) no se "
+                                   f"copiaron. {MOVIDOS}")
+        remitos = [r for r in remitos if r not in faltan]
+        pedidos = [r for r in pedidos if r not in faltan]
+        if not remitos and not pedidos:
+            return
         carpeta = os.path.join(config.SALIDAS, f"Encontrados_{datetime.now():%Y-%m-%d_%H%M}")
         _copiar(remitos, carpeta)
         if pedidos:
@@ -156,7 +166,9 @@ class App:
 
     def abrir(self, _evento):
         ruta = self.tabla.set(self.tabla.focus(), "ruta")
-        if ruta:
+        if ruta and not os.path.exists(ruta):
+            messagebox.showwarning("Buscador de remitos", f"No encontré {ruta}. {MOVIDOS}")
+        elif ruta:
             os.startfile(ruta)
 
     def exportar(self):

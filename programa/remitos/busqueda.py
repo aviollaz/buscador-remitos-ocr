@@ -175,7 +175,7 @@ def leer_lista(ruta):
 
 
 def _copiar(rutas, carpeta):
-    unicos = list(dict.fromkeys(rutas))
+    unicos = [r for r in dict.fromkeys(rutas) if os.path.exists(r)]  # saltea los movidos
     os.makedirs(carpeta, exist_ok=True)
     for r in unicos:
         destino = os.path.join(carpeta, os.path.basename(r))
