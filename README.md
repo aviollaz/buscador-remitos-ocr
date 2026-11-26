@@ -120,9 +120,10 @@ publican por confidencialidad):
    librerías. El idioma español ya viene incluido en `programa/tessdata/`.
 3. Doble clic en `Buscador.bat`. Los Excel de resultados y las copias de remitos quedan en
    la carpeta `Resultados/`. En la ventana:
-   - **Buscar:** pegar uno o varios números (por ejemplo, una columna copiada de Excel).
-     Doble clic en un resultado abre el remito; *Resultados a Excel* arma el Excel de
-     resultados y, si se marca, copia los remitos encontrados a una carpeta.
+   - **Buscar:** pegar uno o varios números (por ejemplo, una columna copiada de Excel) o
+     cargarlos desde un Excel. Doble clic en un resultado abre el remito; *Resultados a
+     Excel* arma el Excel de resultados y *Copiar remitos a una carpeta* copia los
+     encontrados a `Resultados/Encontrados_<fecha>/` y abre la carpeta.
    - **Indexar carpeta:** en dos pasos. El primero lee solo el encabezado (número, fecha,
      cliente, pedido) y deja todo buscable por número cuanto antes; el segundo completa el
      texto de la página. Se puede pausar o cerrar y sigue donde quedó.

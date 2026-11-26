@@ -6,10 +6,11 @@ import threading
 import time
 import tkinter as tk
 import traceback
+from datetime import datetime
 from tkinter import filedialog, messagebox, ttk
 
 from . import config
-from .busqueda import buscar_lista, cargar, leer_lista, parsear_consulta, resolver
+from .busqueda import _copiar, buscar_lista, cargar, leer_lista, parsear_consulta, resolver
 from .exportar import exportar_excel
 from .indice import conectar, indexar
 
@@ -50,9 +51,8 @@ class App:
         b.pack(fill="x", pady=6)
         ttk.Button(b, text="Buscar", command=self.buscar).pack(side="left")
         ttk.Button(b, text="Resultados a Excel", command=self.a_excel).pack(side="left", padx=6)
-        self.copiar = tk.BooleanVar()
-        ttk.Checkbutton(b, text="Copiar también los remitos encontrados a una carpeta",
-                        variable=self.copiar).pack(side="left")
+        ttk.Button(b, text="Copiar remitos a una carpeta", command=self.copiar).pack(
+            side="left")
 
         self.tabla = ttk.Treeview(f, columns=COLUMNAS + ("ruta",), displaycolumns=COLUMNAS,
                                   show="headings")
@@ -135,7 +135,24 @@ class App:
         if not consultas:
             messagebox.showinfo("Buscador de remitos", "Primero pegá algún número.")
             return
-        buscar_lista(ruta, "auto", "auto" if self.copiar.get() else None, abrir=True)
+        buscar_lista(ruta, "auto", None, abrir=True)
+
+    def copiar(self):
+        """Copia los archivos de la tabla (lo último buscado) a Resultados/Encontrados_<fecha>,
+        con las coincidencias por pedido en una subcarpeta, y abre la carpeta."""
+        remitos, pedidos = [], []
+        for it in self.tabla.get_children():
+            ruta = self.tabla.set(it, "ruta")
+            if ruta:
+                (pedidos if "pedido" in self.tabla.set(it, "Resultado") else remitos).append(ruta)
+        if not remitos and not pedidos:
+            messagebox.showinfo("Buscador de remitos", "Primero buscá algún número.")
+            return
+        carpeta = os.path.join(config.SALIDAS, f"Encontrados_{datetime.now():%Y-%m-%d_%H%M}")
+        _copiar(remitos, carpeta)
+        if pedidos:
+            _copiar(pedidos, os.path.join(carpeta, "Coincidencias por pedido"))
+        os.startfile(carpeta)
 
     def abrir(self, _evento):
         ruta = self.tabla.set(self.tabla.focus(), "ruta")
