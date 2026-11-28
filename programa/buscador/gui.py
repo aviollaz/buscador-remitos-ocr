@@ -121,7 +121,12 @@ class App:
         ys.pack(side="right", fill="y")
         xs.pack(side="bottom", fill="x")
         self.tabla.pack(fill="both", expand=True)
-        ttk.Label(f, text="Doble clic en una fila para abrir el documento.").pack(anchor="w")
+        pie = ttk.Frame(f)
+        pie.pack(anchor="w", pady=(2, 0))
+        ttk.Label(pie, text="Colores:").pack(side="left")
+        for color, texto in (("#FFF3CD", "Revisar"),
+                             ("#F8D7DA", "No encontrado")):
+            tk.Label(pie, text=f" {texto} ", background=color).pack(side="left", padx=(6, 0))
         self.resultados = []
 
         # Índice
@@ -189,6 +194,9 @@ class App:
         for n, r in enumerate(self.resultados[:MAX_FILAS]):
             fila = r.fila or {}
             etiqueta = "" if r.vinculado else r.etiqueta    # ya cuelga de su documento
+            if fila.get("dudoso") and "revisar" not in etiqueta:
+                etiqueta = f"{etiqueta} - número dudoso (revisar)" if etiqueta else \
+                    "Número dudoso (revisar)"
             valores = ["" if r.vinculado else r.buscado, etiqueta]
             valores += [nombre_tipo(fila.get(c.nombre)) if c.nombre == "tipo" and fila
                         else mostrar(c.tipo, fila.get(c.nombre)) for c in CAMPOS]

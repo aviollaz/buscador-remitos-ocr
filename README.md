@@ -137,7 +137,8 @@ publican por confidencialidad):
    - **Buscar:** pegar uno o varios números (por ejemplo, una columna copiada de Excel) o
      cargarlos desde un Excel, y/o usar los filtros (tipo, fechas, monto, clientes, texto).
      Con *Incluir remitos/facturas vinculados*, los remitos de cada factura (y viceversa)
-     se despliegan debajo de ella. Doble clic en un resultado abre el documento;
+     se despliegan debajo de ella. Las filas en amarillo hay que revisarlas a mano y la
+     columna *Resultado* dice por qué. Doble clic en un resultado abre el documento;
      *Resultados a Excel* arma el Excel y *Copiar documentos a una carpeta* los copia a
      `Resultados/Encontrados_<fecha>/` y abre la carpeta.
    - **Indexar carpeta:** en dos pasos. El primero lee solo el encabezado (número, fecha,
