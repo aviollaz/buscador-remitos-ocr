@@ -56,20 +56,33 @@ cliente = '\bS\S{0,2}r?es\b\s*[:;.]?\s*(.+?)(?=\s+C\w{0,4}nte\b|\n|$)'
 cod_cliente = '\bC\w{0,4}nte\s*[:;.]?\s*(\d+)'
 cuit = '(\d{2}\s*-\s*\d{8}\s*-\s*\d)'
 
-# PROVISORIO: formato típico de una factura electrónica argentina. Ajustar con una factura
-# real; al indexar se actualiza todo sin volver a leer los archivos.
+# Facturas de proveedores a la empresa. Ajustado con facturas reales de varios formatos:
+# AFIP "Comprobantes en línea" (en el PDF el texto sale con todas las etiquetas primero y
+# los valores después), "N°: A-01000-00079204", número al revés ("00001990 - 00119") y
+# escaneadas. "cliente" y "cuit" son los del proveedor (la otra parte del documento).
 [tipos.factura]
 nombre = "Factura"
 titulo = '\bFACTURA\b'
 numero = ['Punto\s+de\s+Venta\s*:?\s*(\d{1,5})\s*Comp\.?\s*Nro\.?\s*:?\s*(\d{1,8})',
-          '(?<!\d)(\d{4,5})\s*[-–—]\s*(\d{8})(?!\d)']
+          # AFIP: "Punto de Venta:\nComp. Nro:\n00002\n00000530"
+          'Punto\s+de\s+Venta\s*:\s*Comp\.?\s*Nro\.?\s*:\s*(\d{1,5})\s+(\d{1,8})',
+          '(?<!\d)(\d{4,5})\s*[-–—]\s*(\d{8})(?!\d)',
+          # Número antes del punto de venta: el punto de venta se toma dentro del (?=...)
+          # para que quede como primer grupo.
+          '(?<!\d)(?=\d{8}\s*[-–—]\s*(\d{5})(?!\d))(\d{8})']
 
 [tipos.factura.campos]
-fecha = 'Fecha\s+de\s+Emisi[oó]n\s*:?\s*(\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{4})'
-cliente = 'Raz[oó]n\s+Social\s*:?\s*(.+?)(?=\s{2,}|\n|$)'
+# "Fecha: 15/09/2026", "Fecha de Emisión: ...", "FACTURA 16-07-26", o (AFIP) la fecha que
+# está en la línea anterior al CUIT del proveedor. Si no, la primera fecha del documento.
+fecha = '(?m)(?:Fecha(?:\s+de\s+Emisi[oó]n)?\s*:[ \t]*|FACTURA[ \t]+|^(?=\S+\n\d{11}$))(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})'
+# AFIP: "Razón Social:" sola en su línea y el nombre abajo; "Domicilio Comercial: X";
+# "a nombre de X".
+cliente = '(?m)(?:^Raz[oó]n\s+Social\s*:[ \t]*\n|Domicilio\s+Comercial\s*:[ \t]*|a\s+nombre\s+de\s+)([^\n"]*[^\s".])'
 cod_cliente = 'C[oó]d(?:igo)?\.?\s*(?:de\s+)?Cliente\s*:?\s*(\d+)'
-cuit = '(\d{2}\s*-\s*\d{8}\s*-\s*\d)'
+# Con o sin guiones; empieza como un CUIT/CUIL (así no se toma un código de artículo).
+cuit = '(?<!\d)((?:20|23|24|27|30|33|34)\s*-?\s*\d{8}\s*-?\s*\d)(?!\d)'
 pedido = 'Pedido[^\n\d]{0,25}(\d{4,5}\s*[-–—]\s*\d{6,8})'
 # Remitos que cubre la factura (para vincularlos); puede haber varios.
 citados = 'Remitos?\s*(?:N[°º.o]*)?\s*:?\s*((?:\d{1,5}\s*[-–—]\s*\d{1,8}[\s,;y/]*)+)'
-monto = 'Importe\s+Total\s*:?\s*\$?\s*([\d.,]+)'
+# "Importe Total: $ ..." o "Total" al principio de la línea (no "Subtotal").
+monto = '(?m)(?:Importe\s+Total\s*:?|^Total)\s*\$?\s*(\d[\d.,]*\d)'

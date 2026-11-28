@@ -93,7 +93,7 @@ def normalizar(tipo, crudo):
         nums = list(dict.fromkeys(comprobante(*m.groups()) for m in RE_COMPROBANTE.finditer(crudo)))
         return ";".join(nums) or None
     if tipo == "fecha":
-        m = RE_FECHA.search(crudo)
+        m = RE_FECHA.search(crudo.replace("-", "/"))     # también "16-07-26"
         return fecha_iso(*m.groups()) if m else None
     if tipo == "codigo":
         dig = re.sub(r"\D", "", crudo)

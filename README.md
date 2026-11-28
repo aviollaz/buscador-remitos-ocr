@@ -216,9 +216,11 @@ programa/
 - Con tinta muy gastada, la fecha puede leerse mal (por ejemplo, 2025 por 2026).
 - La zona del número asume que está impreso arriba a la derecha; para otro diseño hay que
   ajustar `zona_numero` en `config.toml`.
-- El formato de **factura** de `config.toml` es provisorio (factura electrónica argentina
-  típica) hasta tener una real: si no coincide, las facturas se indexan igual pero con los
-  campos vacíos. Al ajustarlo, el índice se actualiza sin volver a leer nada.
+- Las **facturas** son de proveedores y cada uno usa su propio diseño. `config.toml` está
+  ajustado a los formatos de la muestra (AFIP "Comprobantes en línea" y otros tres): en
+  todos sale bien el número y la fecha, pero algunos no imprimen los remitos con un formato
+  reconocible y ese campo queda vacío. Para un formato nuevo se agrega una expresión
+  regular, y el índice se actualiza sin volver a leer nada.
 - Los vínculos factura ↔ remito dependen de que la factura imprima los remitos que cubre o
   el número de pedido.
 

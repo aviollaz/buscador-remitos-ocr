@@ -17,17 +17,33 @@ Se hace entrega... En su defecto serán facturados a Uds.
 Fecha vto: 30/09/2026
 """
 
-# Formato provisorio de factura (el de config.toml) que además cita sus remitos
-FACTURA = """FACTURA
-A
-Punto de Venta: 00002   Comp. Nro: 00000123
-Fecha de Emisión: 15/03/2026
-CUIT: 30-58661152-2
-Apellido y Nombre / Razón Social: HELADOS LA ESQUINA SRL
-CUIT: 30-71162133-0
+# Factura de proveedor de AFIP "Comprobantes en línea" (datos inventados), como sale el
+# texto del PDF: primero las etiquetas y después los valores.
+FACTURA = """Fecha de Emisión:
+ORIGINAL
+HELADOS LA ESQUINA SRL
+CUIT:
+Condición de venta:
+Apellido y Nombre / Razón Social:
+Domicilio Comercial:
+15/03/2026
+30711621330
+30586611522
+LÁCTEOS DEL EJEMPLO SA
+Punto de Venta:
+Comp. Nro:
+00002
+00000123
+Domicilio Comercial:
+Razón Social:
+HELADOS LA ESQUINA SRL
+FACTURA
 Código de Cliente: 029257
 Remitos: 0007-00043300, 0007-00043301
-Importe Total: $ 1.234.567,89
+Fecha de Vto. de CAE:
+25/03/2026
+Importe Total: $
+1234567,89
 """
 
 
@@ -53,7 +69,24 @@ def test_cliente_tolera_errores_de_ocr_en_la_etiqueta():
         "DISTRIBUIDORA NORTE SRL"
 
 
-def test_factura_provisoria():
+def test_factura_numero_al_reves_y_fecha_con_guiones():
+    d = extraer("NRO:\nFECHA:\n00001990\n-\n00119\nPROVEEDOR SA\n30/04/26\n33-71710141-9\n"
+                "FACTURA\nTodo pago debe hacerse a nombre de PROVEEDOR SA. \"no a la orden\".")
+    assert (d["numero"], d["fecha"], d["cliente"], d["cuit"]) == (
+        "00119-00001990", "2026-04-30", "PROVEEDOR SA", "33-71710141-9")
+    assert extraer("COMPROBANTE FECHA\nFACTURA 16-07-26")["fecha"] == "2026-07-16"
+
+
+def test_factura_n_y_total_al_principio_de_la_linea():
+    d = extraer("FACTURA\nN°: A-01000-00079204\nFecha: 15/09/2026\n"
+                "Domicilio Comercial: Proveedor SRL \nFecha Vto: 15/10/2026\n"
+                "Razón Social: Lácteos del Ejemplo SA\nTotal\nHL1515\nSubtotal\n$510.310,00\n"
+                "Total\n$627.681,30")
+    assert (d["numero"], d["fecha"], d["cliente"], d["monto"]) == (
+        "01000-00079204", "2026-09-15", "Proveedor SRL", 627681.30)
+
+
+def test_factura_afip():
     d = extraer(FACTURA)
     assert d["tipo"] == "factura"
     assert d["numero"] == "00002-00000123"          # los remitos citados no son el número
