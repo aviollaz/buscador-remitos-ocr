@@ -11,4 +11,5 @@ __pycache__/
 .pytest_cache/
 *.pyc
 
-programa/docs/*.jpeg
+programa/docs/remitos/*.jpeg
+programa/docs/facturas/

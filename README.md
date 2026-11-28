@@ -9,7 +9,7 @@ Está en uso en el área contable de una empresa de alimentos: **3 personas** lo
 cruzar remitos al cargar facturas, sobre un archivo de **~45.000 remitos por año**.
 
 <p align="center">
-  <img src="programa/docs/remito_sintetico.png" width="420" alt="Remito sintético con la zona del número marcada">
+  <img src="programa/docs/remitos/remito_sintetico.png" width="420" alt="Remito sintético con la zona del número marcada">
   <br><sub>Remito <b>sintético</b> (datos inventados). En rojo, la zona que se relee solo con dígitos.</sub>
 </p>
 
@@ -122,7 +122,7 @@ publican por confidencialidad):
   corre de un día para el otro; después solo se procesa lo nuevo.
 
 <p align="center">
-  <img src="programa/docs/digito_tapado.png" width="420" alt="Número de remito con el último dígito tapado">
+  <img src="programa/docs/remitos/digito_tapado.png" width="420" alt="Número de remito con el último dígito tapado">
   <br><sub>El caso más difícil: un dígito tapado. Se marca como dudoso en vez de inventar un número.</sub>
 </p>
 
