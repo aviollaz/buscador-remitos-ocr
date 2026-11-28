@@ -107,9 +107,12 @@ class Filtro:
     clientes: list = field(default_factory=list)
     texto: str | None = None
 
+    def por_monto(self):
+        return self.monto_op in OPERADORES_MONTO and self.monto is not None
+
     def vacio(self):
         return not (self.numeros or self.tipo or self.desde or self.hasta or self.clientes
-                    or self.texto or (self.monto_op and self.monto is not None))
+                    or self.texto or self.por_monto())
 
     def where(self):
         """(' WHERE ...', parámetros) con todos los filtros menos los números."""
@@ -123,10 +126,14 @@ class Filtro:
         if self.hasta:
             cond.append("fecha <= ?")
             params.append(self.hasta)
-        if self.monto_op in OPERADORES_MONTO and self.monto is not None:
-            cond.append("abs(monto - ?) < 0.005" if self.monto_op == "=" else
-                        f"monto {self.monto_op} ?")
-            params.append(self.monto)
+        if self.por_monto():
+            # Los documentos de un tipo con monto donde no se pudo leer también entran (se
+            # marcan para revisar en buscar): si no, desaparecerían sin aviso.
+            con_monto = [k for k, t in config.CFG.tipos.items() if "monto" in t.campos]
+            op = "abs(monto - ?) < 0.005" if self.monto_op == "=" else f"monto {self.monto_op} ?"
+            cond.append(f"({op} OR (monto IS NULL AND tipo IN "
+                        f"({', '.join('?' * len(con_monto))})))")
+            params += [self.monto, *con_monto]
         if self.clientes:
             partes = [condicion_cliente(c) for c in self.clientes]
             cond.append("(" + " OR ".join(p[0] for p in partes) + ")")
@@ -242,6 +249,12 @@ def buscar(con, filtro, con_vinculados=False):
                 r += [Resultado(q, f"Por {et}" if hubo else f"Solo por {et} (revisar)", f,
                                 revisar=not hubo, secundario=True) for f in fs]
             res += r or [Resultado(q, "NO ENCONTRADO", revisar=True)]
+    if filtro.por_monto():
+        for r in res:
+            if r.fila and r.fila["monto"] is None:
+                r.etiqueta = f"{r.etiqueta} - sin monto (revisar)" if r.etiqueta else \
+                    "Sin monto (revisar)"
+                r.revisar = True
     return _con_vinculados(con, res) if con_vinculados else res
 
 

@@ -92,6 +92,14 @@ def test_filtro_por_fechas_monto_y_tipo(con):
     assert rutas(con, tipo="factura") == ["f1.pdf", "f2.pdf"]
 
 
+def test_filtro_por_monto_no_esconde_facturas_sin_monto(con):
+    agregar(con, "f3.pdf", tipo="factura", numero="00002-00000125", fecha="2026-04-01")
+    assert etiquetas(con, monto_op=">", monto=1000) == [
+        ("", "f1.pdf"), ("Sin monto (revisar)", "f3.pdf")]   # los remitos no tienen monto
+    assert etiquetas(con, numeros=["125"], monto_op="<", monto=100) == [
+        ("Encontrado - sin monto (revisar)", "f3.pdf")]
+
+
 def test_filtro_por_clientes_nombre_codigo_cuit_y_lista(con):
     assert rutas(con, clientes=["supermercados"]) == ["r1.jpg", "f1.pdf"]
     assert rutas(con, clientes=["029257"]) == ["r2.jpg"]

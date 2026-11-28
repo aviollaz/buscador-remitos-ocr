@@ -221,6 +221,10 @@ programa/
   todos sale bien el número y la fecha, pero algunos no imprimen los remitos con un formato
   reconocible y ese campo queda vacío. Para un formato nuevo se agrega una expresión
   regular, y el índice se actualiza sin volver a leer nada.
+- Si una factura digital no tiene un "Total" reconocible, se toma su importe más grande. En
+  las escaneadas no se adivina: el monto queda vacío y, al filtrar por monto, la factura
+  aparece como *"Sin monto (revisar)"* en vez de desaparecer. El monto se guarda sin
+  moneda: una factura en dólares se compara como si fueran pesos.
 - Los vínculos factura ↔ remito dependen de que la factura imprima los remitos que cubre o
   el número de pedido.
 
