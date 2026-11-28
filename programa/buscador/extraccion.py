@@ -8,7 +8,7 @@ import re
 from collections import Counter
 
 from . import config
-from .campos import CAMPOS, POR_NOMBRE, RE_FECHA, comprobante, fecha_iso, normalizar
+from .campos import CAMPOS, POR_NOMBRE, RE_FECHA, comprobante, fecha_iso, monto, normalizar
 
 # Lectura de la zona del número (solo dígitos, '-' y '/'): acepta dígitos de más o de menos
 # para detectar lecturas dudosas.
@@ -16,6 +16,9 @@ RE_NUM_CRUDO = re.compile(r"(?<!\d)(\d{4,5})\s*[-–—]\s*(\d{5,9})(?!\d)")
 # Separa las lecturas independientes de la zona (y las páginas) dentro de texto_zona; ninguna
 # expresión puede cruzarlo, así el final de una lectura no se pega al principio de otra.
 SEPARADOR_LECTURAS = "\n#\n"
+# Importe con exactamente 2 decimales ("1.234,56", "24,527,200.00", "59617208,20"); no toma
+# cantidades ("1500.000"), cotizaciones ("1391.5000000") ni fechas.
+RE_IMPORTE = re.compile(r"(?<![\d.,])(?:\d{1,3}(?:[.,]\d{3})+|\d+)[.,]\d{2}(?![\d.,])")
 
 
 def detectar_tipo(texto, cfg):
@@ -57,6 +60,11 @@ def fecha_suelta(texto, ignorar_tras):
         if f := fecha_iso(*m.groups()):
             return f
     return None
+
+
+def importe_mayor(texto):
+    """El importe más grande del documento: en una factura casi siempre es el total."""
+    return max((monto(m.group()) for m in RE_IMPORTE.finditer(texto)), default=None)
 
 
 def decidir(pagina, lecturas_zona, texto_zona):
@@ -111,4 +119,8 @@ def extraer(texto, texto_zona="", cfg=None):
     datos["dudoso"] = int(dudoso)
     datos["fecha"] = (fecha_de_encabezado(texto_zona) or datos["fecha"]
                       or fecha_suelta(texto, cfg.fechas_a_ignorar_tras))
+    # Total sin etiqueta: el importe más grande, solo en PDF digitales (sin zona releída). En
+    # un escaneo el total puede estar mal leído y el más grande sería otro (el subtotal).
+    if "monto" in tipo.campos and datos["monto"] is None and not texto_zona:
+        datos["monto"] = importe_mayor(texto)
     return datos

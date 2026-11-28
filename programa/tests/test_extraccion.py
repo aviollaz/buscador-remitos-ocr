@@ -86,6 +86,14 @@ def test_factura_n_y_total_al_principio_de_la_linea():
         "01000-00079204", "2026-09-15", "Proveedor SRL", 627681.30)
 
 
+def test_factura_sin_total_escrito_toma_el_importe_mayor_solo_si_es_digital():
+    texto = ("FACTURA\n00001990\n-\n00119\nKN\n1500.000\n1,800.00\nIVA 21.0%\n378.00\n"
+             "Dolares\n2,220.30\n1391.5000000\n30/04/26")
+    assert extraer(texto)["monto"] == 2220.30
+    assert extraer(texto, "00119-00001990")["monto"] is None      # escaneada: no se adivina
+    assert extraer(REMITO)["monto"] is None
+
+
 def test_factura_afip():
     d = extraer(FACTURA)
     assert d["tipo"] == "factura"
