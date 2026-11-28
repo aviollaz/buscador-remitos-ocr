@@ -7,7 +7,7 @@ from datetime import date, datetime
 from . import config
 from .busqueda import Resultado, filas, nombre_tipo
 from .campos import CAMPOS
-from .indice import conectar
+from .indice import conectar, correcciones
 
 ROJO, AMARILLO = "F8D7DA", "FFF3CD"
 FORMATOS = {"fecha": "DD/MM/YYYY", "monto": "#,##0.00"}
@@ -38,7 +38,8 @@ def a_excel(resultados, nombre="Resultados", busqueda=True, abrir=False):
     previas = [("Buscado", 18), ("Resultado", 28)] if busqueda else []
     columnas = previas + [(c.etiqueta, c.ancho) for c in CAMPOS] + [
         ("Nombre de archivo", 30), ("Carpeta", 50), ("Lectura dudosa", 16),
-        ("Otras lecturas", 30)]
+        ("Otras lecturas", 30), ("Corregido a mano", 40)]
+    corregidos = correcciones(conectar())
     ws.append([t for t, _ in columnas])
     for r in resultados:
         f = r.fila or {}
@@ -46,7 +47,8 @@ def a_excel(resultados, nombre="Resultados", busqueda=True, abrir=False):
         ws.append(([r.buscado, r.etiqueta] if busqueda else [])
                   + [celda(c, f.get(c.nombre)) for c in CAMPOS]
                   + ([os.path.basename(f["ruta"]), os.path.dirname(f["ruta"]),
-                      "SÍ - revisar" if revisar else "", f["alternativas"]] if f else []))
+                      "SÍ - revisar" if revisar else "", f["alternativas"],
+                      corregidos.get(f["ruta"])] if f else []))
         color = ROJO if r.fila is None else AMARILLO if (r.revisar or revisar) else None
         if color:
             for c in ws[ws.max_row]:

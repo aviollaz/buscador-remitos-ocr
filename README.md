@@ -88,6 +88,10 @@ flowchart LR
   archivo (y el de la zona del número) y los datos se extraen de ahí con una función pura.
   Si cambia `config.toml`, el índice se actualiza solo a partir del texto guardado, **sin
   volver a hacer OCR** (50.000 documentos en ~5 s).
+- **Las correcciones a mano se guardan aparte.** Cuando alguien corrige o confirma un
+  número, se guarda en otra tabla (con lo que había leído el OCR, quién y cuándo) y se
+  aplica encima de cada lectura. Así no se pierde al recalcular los datos ni al volver a
+  leer el archivo, y se puede deshacer.
 - **El tipo lo decide el título que aparece primero.** Así una factura que menciona
   "Remito N° …" sigue siendo factura, y los números citados o de pedido nunca se toman como
   número del documento.
@@ -138,9 +142,11 @@ publican por confidencialidad):
      cargarlos desde un Excel, y/o usar los filtros (tipo, fechas, monto, clientes, texto).
      Con *Incluir remitos/facturas vinculados*, los remitos de cada factura (y viceversa)
      se despliegan debajo de ella. Las filas en amarillo hay que revisarlas a mano y la
-     columna *Resultado* dice por qué. Doble clic en un resultado abre el documento, clic
-     derecho copia ese dato (número, CUIT…) y Ctrl+C copia las filas elegidas para pegarlas
-     en Excel. *Resultados a Excel* arma el Excel y *Copiar documentos a una carpeta* los copia a
+     columna *Resultado* dice por qué. Doble clic en un resultado abre el documento y Ctrl+C
+     copia las filas elegidas para pegarlas en Excel. El clic derecho copia ese dato
+     (número, CUIT…) y permite **confirmar** la lectura de un número dudoso, **corregir** a
+     mano el número o el monto si el OCR leyó mal, y **deshacer** la corrección.
+     *Resultados a Excel* arma el Excel y *Copiar documentos a una carpeta* los copia a
      `Resultados/Encontrados_<fecha>/` y abre la carpeta.
    - **Indexar carpeta:** en dos pasos. El primero lee solo el encabezado (número, fecha,
      cliente, pedido) y deja todo buscable por número cuanto antes; el segundo completa el

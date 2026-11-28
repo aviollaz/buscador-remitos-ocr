@@ -11,9 +11,9 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import config
 from .busqueda import OPERADORES_MONTO, Filtro, buscar, copiar, leer_lista, nombre_tipo
-from .campos import CAMPOS, mostrar, normalizar
+from .campos import CAMPOS, POR_NOMBRE, mostrar, normalizar
 from .exportar import a_excel, exportar_indice
-from .indice import conectar, indexar, reextraer
+from .indice import conectar, correcciones, corregir, indexar, reextraer
 
 TITULO = "Buscador de remitos y facturas"
 ULTIMA_CARPETA = os.path.join(config.BASE_DIR, "ultima_carpeta.txt")
@@ -115,7 +115,7 @@ class App:
         self.tabla.tag_configure("no", background="#F8D7DA")
         self.tabla.tag_configure("revisar", background="#FFF3CD")
         self.tabla.bind("<Double-1>", self.abrir)
-        self.tabla.bind("<Button-3>", self.copiar_dato)
+        self.tabla.bind("<Button-3>", self.menu)
         self.tabla.bind("<Control-c>", self.copiar_filas)
         xs = ttk.Scrollbar(t, orient="horizontal", command=self.tabla.xview)
         ys = ttk.Scrollbar(t, orient="vertical", command=self.tabla.yview)
@@ -129,7 +129,7 @@ class App:
         for color, texto in (("#FFF3CD", "Revisar"),
                              ("#F8D7DA", "No encontrado")):
             tk.Label(pie, text=f" {texto} ", background=color).pack(side="left", padx=(6, 0))
-        self.resultados = []
+        self.resultados, self.corregidos = [], {}
 
         # Índice
         ttk.Separator(f).pack(fill="x", pady=8)
@@ -190,7 +190,9 @@ class App:
         filtro = self.filtro()
         if not filtro:
             return
-        self.resultados = buscar(conectar(), filtro, self.vinculados.get())
+        con = conectar()
+        self.resultados = buscar(con, filtro, self.vinculados.get())
+        self.corregidos = correcciones(con)
         self.tabla.delete(*self.tabla.get_children())
         padre, hijos, con_etiqueta = "", {}, False
         for n, r in enumerate(self.resultados[:MAX_FILAS]):
@@ -199,6 +201,8 @@ class App:
             if fila.get("dudoso") and "revisar" not in etiqueta:
                 etiqueta = f"{etiqueta} - número dudoso (revisar)" if etiqueta else \
                     "Número dudoso (revisar)"
+            if corr := self.corregidos.get(fila.get("ruta")):
+                etiqueta = f"{etiqueta} - {corr}" if etiqueta else corr
             con_etiqueta |= bool(etiqueta)
             valores = ["" if r.vinculado else r.buscado, etiqueta]
             valores += [nombre_tipo(fila.get(c.nombre)) if c.nombre == "tipo" and fila
@@ -283,13 +287,77 @@ class App:
         self.root.clipboard_clear()
         self.root.clipboard_append(texto)
 
-    def copiar_dato(self, evento):
-        """Clic derecho: copia el dato de esa celda (número, CUIT, monto...)."""
+    def menu(self, evento):
+        """Clic derecho: copiar el dato de esa celda, o confirmar, corregir o deshacer la
+        corrección de lo que leyó el OCR."""
         iid, col = self.tabla.identify_row(evento.y), self.tabla.identify_column(evento.x)
-        if iid and col != "#0":
-            valor = self.tabla.set(iid, self.tabla["displaycolumns"][int(col[1:]) - 1])
-            if valor:
-                self._al_portapapeles(valor)
+        if not iid:
+            return
+        self.tabla.selection_set(iid)
+        self.tabla.focus(iid)
+        fila = self.resultados[int(iid)].fila
+        valor = self.tabla.set(iid, self.tabla["displaycolumns"][int(col[1:]) - 1])             if col != "#0" else ""
+        m = tk.Menu(self.root, tearoff=0)
+        for texto, habilitado, accion in (
+                ("Copiar este dato", valor, lambda: self._al_portapapeles(valor)),
+                ("Confirmar lectura", fila and fila["dudoso"] and fila["numero"],
+                 lambda: self._corregir(fila, numero=fila["numero"])),
+                ("Corregir…", fila, lambda: self.dialogo_corregir(fila)),
+                ("Deshacer corrección", fila and fila["ruta"] in self.corregidos,
+                 lambda: self._corregir(fila, numero=None, monto=None))):
+            m.add_command(label=texto, command=accion,
+                          state="normal" if habilitado else "disabled")
+        m.tk_popup(evento.x_root, evento.y_root)
+
+    def _corregir(self, fila, **valores):
+        con = conectar()
+        for campo, valor in valores.items():
+            corregir(con, fila["ruta"], campo, valor)
+        self.buscar()
+
+    def dialogo_corregir(self, fila):
+        """Corrige a mano el número y, si el tipo de documento tiene monto, el monto."""
+        v = tk.Toplevel(self.root, padx=12, pady=12)
+        v.title(f"Corregir {os.path.basename(fila['ruta'])}")
+        v.transient(self.root)
+        v.grab_set()
+        tipo = config.CFG.tipos.get(fila["tipo"])
+        nombres = ["numero"] + (["monto"] if tipo and "monto" in tipo.campos else [])
+        variables = {}
+        for i, nombre in enumerate(nombres):
+            c = POR_NOMBRE[nombre]
+            ttk.Label(v, text=c.etiqueta).grid(row=i, column=0, sticky="w", pady=3)
+            variables[nombre] = tk.StringVar(value=mostrar(c.tipo, fila[nombre]))
+            ttk.Entry(v, textvariable=variables[nombre], width=22).grid(row=i, column=1, padx=6)
+        if fila["alternativas"]:
+            ttk.Label(v, text=f"Otras lecturas del OCR: {fila['alternativas']}").grid(
+                row=len(nombres), column=0, columnspan=2, sticky="w", pady=(6, 0))
+
+        def guardar():
+            nuevos = {}
+            for nombre, var in variables.items():
+                texto = var.get().strip()
+                if nombre == "monto" and not texto:
+                    continue
+                nuevo = normalizar(POR_NOMBRE[nombre].tipo, texto)
+                if nuevo is None or (nombre == "numero" and ";" in nuevo):
+                    messagebox.showwarning(TITULO, "Escribí el número con su punto de venta, "
+                                           "por ejemplo 00025-00063504." if nombre == "numero"
+                                           else "Escribí el monto, por ejemplo 1.234,56.",
+                                           parent=v)
+                    return
+                if nuevo != fila[nombre]:
+                    nuevos[nombre] = nuevo
+            v.destroy()
+            if nuevos:
+                self._corregir(fila, **nuevos)
+
+        b = ttk.Frame(v)
+        b.grid(row=len(nombres) + 1, column=0, columnspan=2, pady=(10, 0), sticky="e")
+        ttk.Button(b, text="Abrir documento", command=lambda: os.startfile(fila["ruta"])).pack(
+            side="left")
+        ttk.Button(b, text="Guardar", command=guardar).pack(side="left", padx=6)
+        ttk.Button(b, text="Cancelar", command=v.destroy).pack(side="left")
 
     def copiar_filas(self, _evento):
         """Ctrl+C: copia las filas elegidas con las columnas visibles, separadas por
