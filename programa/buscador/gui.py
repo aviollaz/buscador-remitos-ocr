@@ -115,6 +115,8 @@ class App:
         self.tabla.tag_configure("no", background="#F8D7DA")
         self.tabla.tag_configure("revisar", background="#FFF3CD")
         self.tabla.bind("<Double-1>", self.abrir)
+        self.tabla.bind("<Button-3>", self.copiar_dato)
+        self.tabla.bind("<Control-c>", self.copiar_filas)
         xs = ttk.Scrollbar(t, orient="horizontal", command=self.tabla.xview)
         ys = ttk.Scrollbar(t, orient="vertical", command=self.tabla.yview)
         self.tabla.configure(xscrollcommand=xs.set, yscrollcommand=ys.set)
@@ -276,6 +278,28 @@ class App:
         if secundarios:
             copiar(secundarios, os.path.join(carpeta, "Coincidencias por otro número"))
         os.startfile(carpeta)
+
+    def _al_portapapeles(self, texto):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(texto)
+
+    def copiar_dato(self, evento):
+        """Clic derecho: copia el dato de esa celda (número, CUIT, monto...)."""
+        iid, col = self.tabla.identify_row(evento.y), self.tabla.identify_column(evento.x)
+        if iid and col != "#0":
+            valor = self.tabla.set(iid, self.tabla["displaycolumns"][int(col[1:]) - 1])
+            if valor:
+                self._al_portapapeles(valor)
+
+    def copiar_filas(self, _evento):
+        """Ctrl+C: copia las filas elegidas con las columnas visibles, separadas por
+        tabulaciones (se pegan en Excel en columnas)."""
+        sel, visibles = self.tabla.selection(), self.tabla["displaycolumns"]
+        if sel:
+            titulos = {c: t for c, t, _ in COLUMNAS}
+            filas = ["\t".join(titulos[c] for c in visibles)] + [
+                "\t".join(self.tabla.set(i, c) for c in visibles) for i in sel]
+            self._al_portapapeles("\n".join(filas) + "\n")
 
     def abrir(self, _evento):
         sel = self.tabla.focus()

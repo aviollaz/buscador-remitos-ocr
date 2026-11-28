@@ -138,8 +138,9 @@ publican por confidencialidad):
      cargarlos desde un Excel, y/o usar los filtros (tipo, fechas, monto, clientes, texto).
      Con *Incluir remitos/facturas vinculados*, los remitos de cada factura (y viceversa)
      se despliegan debajo de ella. Las filas en amarillo hay que revisarlas a mano y la
-     columna *Resultado* dice por qué. Doble clic en un resultado abre el documento;
-     *Resultados a Excel* arma el Excel y *Copiar documentos a una carpeta* los copia a
+     columna *Resultado* dice por qué. Doble clic en un resultado abre el documento, clic
+     derecho copia ese dato (número, CUIT…) y Ctrl+C copia las filas elegidas para pegarlas
+     en Excel. *Resultados a Excel* arma el Excel y *Copiar documentos a una carpeta* los copia a
      `Resultados/Encontrados_<fecha>/` y abre la carpeta.
    - **Indexar carpeta:** en dos pasos. El primero lee solo el encabezado (número, fecha,
      cliente, pedido) y deja todo buscable por número cuanto antes; el segundo completa el
