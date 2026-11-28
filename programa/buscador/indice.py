@@ -5,14 +5,16 @@ Se guarda el texto leído de cada archivo (y el de la zona del número), y los d
 calculan a partir de él (extraccion.extraer). Si cambia config.toml, los datos se
 recalculan sin volver a hacer OCR."""
 
+import getpass
 import os
 import sqlite3
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime
 from pathlib import PurePath
 
 from . import config
-from .campos import CAMPOS, normalizar, plano
+from .campos import CAMPOS, POR_NOMBRE, mostrar, normalizar, plano
 from .extraccion import extraer
 
 # Versión de la lógica de lectura (OCR). Al subirla, "indexar" relee lo que haga falta:
@@ -50,6 +52,8 @@ def conectar(db=None):
     else:
         con.execute(f"CREATE TABLE docs ({', '.join(f'{n} {t}' for n, t in ESQUEMA)})")
     con.execute("CREATE TABLE IF NOT EXISTS meta (clave TEXT PRIMARY KEY, valor TEXT)")
+    con.execute("CREATE TABLE IF NOT EXISTS correcciones (ruta TEXT, campo TEXT, valor, "
+                "original, usuario TEXT, fecha TEXT, PRIMARY KEY (ruta, campo))")
     # Sin este índice, "numero IS NULL" lee el texto completo de cada fila
     con.execute("CREATE INDEX IF NOT EXISTS docs_numero ON docs(numero)")
     con.commit()
@@ -84,6 +88,50 @@ def calcular(texto, texto_zona, previo=None):
     return datos
 
 
+def con_correcciones(con, ruta, datos):
+    """Pone encima de los datos leídos las correcciones hechas a mano. Se guardan aparte
+    para que no se pierdan cuando se recalculan los datos o se vuelve a leer el archivo."""
+    for campo, valor in con.execute("SELECT campo, valor FROM correcciones WHERE ruta = ?",
+                                    (ruta,)):
+        datos[campo] = valor
+        if campo == "numero":
+            datos["dudoso"] = 0
+    return datos
+
+
+def corregir(con, ruta, campo, valor):
+    """Corrige a mano el número o el monto de un documento (con el mismo valor: confirma lo
+    leído). valor=None deshace la corrección. Se guarda lo que había leído el OCR, quién y
+    cuándo."""
+    if valor is None:
+        con.execute("DELETE FROM correcciones WHERE ruta = ? AND campo = ?", (ruta, campo))
+    else:
+        original = con.execute(f"SELECT {campo} FROM docs WHERE ruta = ?", (ruta,)).fetchone()[0]
+        con.execute("INSERT INTO correcciones VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (ruta, campo) "
+                    "DO UPDATE SET valor = excluded.valor, usuario = excluded.usuario, "
+                    "fecha = excluded.fecha",          # el original sigue siendo el del OCR
+                    (ruta, campo, valor, original, getpass.getuser(),
+                     datetime.now().isoformat(timespec="seconds")))
+    texto, zona, *previo = con.execute(
+        "SELECT texto, texto_zona, numero, dudoso, alternativas, fecha FROM docs WHERE ruta = ?",
+        (ruta,)).fetchone()
+    previo = dict(zip(("numero", "dudoso", "alternativas", "fecha"), previo))
+    _actualizar(con, ruta, con_correcciones(con, ruta, calcular(texto, zona, previo)))
+    con.commit()
+
+
+def correcciones(con):
+    """ruta -> texto que dice qué se corrigió (o confirmó) a mano y qué había leído el OCR."""
+    res = {}
+    for ruta, campo, valor, original in con.execute(
+            "SELECT ruta, campo, valor, original FROM correcciones ORDER BY campo DESC"):
+        c = POR_NOMBRE[campo]
+        txt = (f"{c.etiqueta} confirmado a mano" if valor == original else
+               f"{c.etiqueta} corregido a mano (leído: {mostrar(c.tipo, original) or 'nada'})")
+        res[ruta] = f"{res[ruta]}; {txt}" if ruta in res else txt
+    return res
+
+
 def _actualizar(con, ruta, valores):
     con.execute(f"UPDATE docs SET {', '.join(f'{k} = ?' for k in valores)} WHERE ruta = ?",
                 [*valores.values(), ruta])
@@ -102,7 +150,7 @@ def reextraer(con):
                 "SELECT ruta, texto, texto_zona, numero, dudoso, alternativas, fecha FROM docs "
                 f"WHERE ruta IN ({', '.join('?' * len(lote))})", lote).fetchall():
             previo = dict(zip(("numero", "dudoso", "alternativas", "fecha"), previo))
-            _actualizar(con, ruta, calcular(texto, zona, previo))
+            _actualizar(con, ruta, con_correcciones(con, ruta, calcular(texto, zona, previo)))
         con.commit()                       # de a lotes: no bloquea a quien busca mientras
     con.execute("INSERT OR REPLACE INTO meta VALUES ('huella', ?)", (config.CFG.huella,))
     con.commit()
@@ -204,6 +252,7 @@ def indexar(carpeta, workers=None, avance=_avance_consola, parar=None):
             continue
         fila = {"ruta": ruta, "mtime": os.path.getmtime(ruta), "version": VERSION,
                 "parcial": int(not completo), "texto": texto, "texto_zona": zona, **calcular(texto, zona)}
+        con_correcciones(con, ruta, fila)
         sin_numero += not fila["numero"]
         dudosos += fila["dudoso"]
         con.execute(f"INSERT OR REPLACE INTO docs ({', '.join(columnas)}) "
@@ -225,8 +274,8 @@ def indexar(carpeta, workers=None, avance=_avance_consola, parar=None):
             _correr(list(previos), 2, workers, avance, parar), 1):
         if not err:
             zona, previo = previos[ruta]
-            _actualizar(con, ruta, {"texto": texto, "parcial": 0,
-                                    **calcular(texto, zona, previo)})
+            _actualizar(con, ruta, con_correcciones(con, ruta, {
+                "texto": texto, "parcial": 0, **calcular(texto, zona, previo)}))
         if i % COMMIT_CADA == 0:
             con.commit()
     con.commit()

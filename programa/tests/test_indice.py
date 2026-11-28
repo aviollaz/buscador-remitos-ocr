@@ -107,3 +107,51 @@ def test_renombra_el_indice_viejo_solo_si_es_el_del_programa(tmp_path, monkeypat
     monkeypatch.setattr(config, "DB", str(nuevo))
     indice.conectar().close()
     assert not viejo.exists() and nuevo.exists()
+
+
+ZONA_DUDOSA = "00007 - 00043399\n#\n00007 - 0004330"      # las lecturas no coinciden
+
+
+def test_corregir_confirmar_y_deshacer(db):
+    con = indice.conectar()
+    con.execute("INSERT INTO docs (ruta, texto, texto_zona) VALUES ('a.jpg', ?, ?)",
+                (REMITO, ZONA_DUDOSA))
+    indice.reextraer(con)
+    leido = con.execute("SELECT numero, dudoso FROM docs").fetchone()
+    assert leido[1] == 1
+
+    indice.corregir(con, "a.jpg", "numero", leido[0])                  # confirmar
+    assert con.execute("SELECT numero, dudoso FROM docs").fetchone() == (leido[0], 0)
+    assert indice.correcciones(con) == {"a.jpg": "Número confirmado a mano"}
+
+    indice.corregir(con, "a.jpg", "numero", "00007-00043301")         # corregir
+    assert con.execute("SELECT numero, dudoso FROM docs").fetchone() == ("00007-00043301", 0)
+    assert indice.correcciones(con) == {
+        "a.jpg": f"Número corregido a mano (leído: {leido[0]})"}       # el del OCR
+
+    indice.corregir(con, "a.jpg", "numero", None)                     # deshacer
+    assert con.execute("SELECT numero, dudoso FROM docs").fetchone() == leido
+    assert indice.correcciones(con) == {}
+
+
+def test_la_correccion_sobrevive_al_recalcular_y_al_releer(tmp_path, db, monkeypatch):
+    archivo = tmp_path / "scans" / "r.jpg"
+    archivo.parent.mkdir()
+    archivo.write_bytes(b"")
+    leer = mock.Mock(side_effect=lambda rutas, paso, *a: iter(
+        [(r, REMITO, ZONA_DUDOSA, True, None) for r in rutas] if paso == 1 else []))
+    monkeypatch.setattr(indice, "_correr", leer)
+    indice.indexar(str(tmp_path / "scans"), workers=1)
+    con = indice.conectar()
+    ruta = con.execute("SELECT ruta FROM docs").fetchone()[0]
+    indice.corregir(con, ruta, "numero", "00007-00043301")
+    indice.corregir(con, ruta, "monto", 1500.0)
+
+    con.execute("DELETE FROM meta")                   # como si hubiera cambiado config.toml
+    con.commit()
+    assert indice.reextraer(con) == 1
+    os.utime(archivo, (1, 1))                         # archivo modificado: se vuelve a leer
+    indice.indexar(str(tmp_path / "scans"), workers=1)
+    assert leer.call_args_list[2].args[:2] == ([ruta], 1)       # se volvió a leer
+    assert indice.conectar().execute("SELECT numero, dudoso, monto FROM docs").fetchone() == \
+        ("00007-00043301", 0, 1500.0)
