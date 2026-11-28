@@ -190,13 +190,14 @@ class App:
             return
         self.resultados = buscar(conectar(), filtro, self.vinculados.get())
         self.tabla.delete(*self.tabla.get_children())
-        padre, hijos = "", {}
+        padre, hijos, con_etiqueta = "", {}, False
         for n, r in enumerate(self.resultados[:MAX_FILAS]):
             fila = r.fila or {}
             etiqueta = "" if r.vinculado else r.etiqueta    # ya cuelga de su documento
             if fila.get("dudoso") and "revisar" not in etiqueta:
                 etiqueta = f"{etiqueta} - número dudoso (revisar)" if etiqueta else \
                     "Número dudoso (revisar)"
+            con_etiqueta |= bool(etiqueta)
             valores = ["" if r.vinculado else r.buscado, etiqueta]
             valores += [nombre_tipo(fila.get(c.nombre)) if c.nombre == "tipo" and fila
                         else mostrar(c.tipo, fila.get(c.nombre)) for c in CAMPOS]
@@ -214,6 +215,12 @@ class App:
             for h in medio:
                 self.tabla.item(h, text="├─▸")
             self.tabla.item(ultimo, text="└─▸")
+        # "Buscado" solo sirve con una lista de números (a cuál responde cada fila) y
+        # "Resultado" cuando dice algo (tipo de coincidencia o por qué revisar)
+        ocultas = {"buscado"} if not filtro.numeros else set()
+        if not con_etiqueta:
+            ocultas.add("resultado")
+        self.tabla["displaycolumns"] = [c for c, _, _ in COLUMNAS if c not in ocultas]
         total = len(self.resultados)
         self.cantidad.set(f"{miles(total)} resultado(s)" + (
             f"; se muestran los primeros {miles(MAX_FILAS)}, el Excel lleva todos"
