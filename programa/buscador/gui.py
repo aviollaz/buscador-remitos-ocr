@@ -105,7 +105,10 @@ class App:
         # Resultados
         t = ttk.Frame(f)
         t.pack(fill="both", expand=True)
-        self.tabla = ttk.Treeview(t, columns=[c for c, _, _ in COLUMNAS], show="headings")
+        # Los documentos vinculados van "adentro" del que los cita: se despliegan con la flecha
+        self.tabla = ttk.Treeview(t, columns=[c for c, _, _ in COLUMNAS], show="tree headings")
+        self.tabla.heading("#0", text="Vinculados")
+        self.tabla.column("#0", width=110, stretch=False)
         for c, titulo, ancho in COLUMNAS:
             self.tabla.heading(c, text=titulo)
             self.tabla.column(c, width=ancho * 7, stretch=False)
@@ -182,14 +185,27 @@ class App:
             return
         self.resultados = buscar(conectar(), filtro, self.vinculados.get())
         self.tabla.delete(*self.tabla.get_children())
+        padre, hijos = "", {}
         for n, r in enumerate(self.resultados[:MAX_FILAS]):
             fila = r.fila or {}
-            valores = [r.buscado, r.etiqueta]
+            etiqueta = "" if r.vinculado else r.etiqueta    # ya cuelga de su documento
+            valores = ["" if r.vinculado else r.buscado, etiqueta]
             valores += [nombre_tipo(fila.get(c.nombre)) if c.nombre == "tipo" and fila
                         else mostrar(c.tipo, fila.get(c.nombre)) for c in CAMPOS]
             valores.append(os.path.basename(fila["ruta"]) if fila else "")
             tags = ("no",) if not r.fila else ("revisar",) if r.revisar else ()
-            self.tabla.insert("", "end", iid=str(n), values=valores, tags=tags)
+            if r.vinculado:
+                hijos[padre] = hijos.get(padre, 0) + 1
+            else:
+                padre = str(n)
+            self.tabla.insert(padre if r.vinculado else "", "end", iid=str(n), values=valores,
+                              tags=tags)
+        for iid, k in hijos.items():
+            self.tabla.item(iid, text=f"{k} vinculado(s)")
+            *medio, ultimo = self.tabla.get_children(iid)     # líneas de árbol
+            for h in medio:
+                self.tabla.item(h, text="├─▸")
+            self.tabla.item(ultimo, text="└─▸")
         total = len(self.resultados)
         self.cantidad.set(f"{miles(total)} resultado(s)" + (
             f"; se muestran los primeros {miles(MAX_FILAS)}, el Excel lleva todos"
@@ -255,6 +271,7 @@ class App:
             messagebox.showwarning(TITULO, f"No encontré {fila['ruta']}. {MOVIDOS}")
         else:
             os.startfile(fila["ruta"])
+        return "break"          # que el doble clic abra el documento sin desplegar la fila
 
     def exportar(self):
         self.root.config(cursor="watch")
